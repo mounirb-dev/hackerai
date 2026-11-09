@@ -31,6 +31,10 @@ if (
 }
 
 const nextConfig: NextConfig = {
+  // Self-hosted container image (see Dockerfile); Vercel builds are unaffected.
+  ...(process.env.NEXT_OUTPUT === "standalone" && {
+    output: "standalone" as const,
+  }),
   devIndicators: false,
   env: {
     NEXT_PUBLIC_HACKERAI_BUILD_COMMIT: publicBuildCommit,

@@ -78,13 +78,6 @@ export function normalizeNetworkPolicy(input: unknown): NetworkPolicy {
   };
 }
 
-export function e2bNetwork(policy: NetworkPolicy) {
-  return {
-    allowOut: policy.mode === "restricted" ? policy.allow : [],
-    denyOut: policy.mode === "unrestricted" ? [] : ["0.0.0.0/0"],
-  };
-}
-
 export type NetworkSettings = {
   policy: NetworkPolicy;
   revision: number;

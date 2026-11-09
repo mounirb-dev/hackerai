@@ -16,7 +16,7 @@ const mockPhEvent = phLogger.event as jest.MockedFunction<
   typeof phLogger.event
 >;
 
-describe("E2B resource pressure telemetry", () => {
+describe("Sandbox resource pressure telemetry", () => {
   beforeEach(() => {
     mockPhEvent.mockClear();
   });
@@ -55,7 +55,7 @@ describe("E2B resource pressure telemetry", () => {
         mode: "agent",
         subscription_tier: "pro-plus",
         sandbox_type: "cloud",
-        sandbox_provider: "e2b",
+        sandbox_provider: "docker",
         trigger_run_id: "run-123",
         cpu_used_pct: 99.88,
         memory_used_pct: 72.35,

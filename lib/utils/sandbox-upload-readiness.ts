@@ -1,5 +1,5 @@
 import type { AnySandbox } from "@/types";
-import { isE2BSandbox } from "@/lib/ai/tools/utils/sandbox-types";
+import { isCloudSandbox } from "@/lib/ai/tools/utils/sandbox-types";
 import { runAttachmentCommand } from "@/lib/ai/tools/utils/attachment-command";
 
 /** One read-only probe per batch, including after reconnecting the SDK client. */
@@ -7,7 +7,7 @@ export async function checkAttachmentReadiness(
   sandbox: AnySandbox,
   signal?: AbortSignal,
 ) {
-  if (!isE2BSandbox(sandbox)) return;
+  if (!isCloudSandbox(sandbox)) return;
   signal?.throwIfAborted();
   const result = await runAttachmentCommand(sandbox, "true", signal, {
     timeoutMs: 5_000,
@@ -22,7 +22,7 @@ export async function checkAttachmentReadiness(
 export async function sampleAttachmentFailureMetrics(
   sandbox: AnySandbox,
 ): Promise<Record<string, string | number>> {
-  if (!isE2BSandbox(sandbox)) return { metrics_status: "not_e2b" };
+  if (!isCloudSandbox(sandbox)) return { metrics_status: "not_e2b" };
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const end = new Date(Date.now());

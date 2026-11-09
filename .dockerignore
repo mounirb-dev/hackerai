@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.github
+.env*
+!.env.local.example
+packages/desktop/src-tauri
+packages/*/node_modules
+docs
+e2e
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+*.md
+!README.md

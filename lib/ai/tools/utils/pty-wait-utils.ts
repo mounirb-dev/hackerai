@@ -43,7 +43,7 @@ export async function waitForOutput(
     };
 
     // Capture any bytes already buffered before subscription (e.g. data that
-    // arrived during await sendInput's network RTT on E2B). Without this,
+    // arrived during await sendInput's network RTT on the cloud sandbox). Without this,
     // pre-subscription bytes reach only the buffer listener and are never
     // streamed to the UI.
     const preBuffered = consume(session);

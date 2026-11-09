@@ -1,4 +1,4 @@
-jest.mock("@e2b/code-interpreter", () => {
+jest.mock("@/lib/sandbox/docker", () => {
   class MockE2BError extends Error {}
   return {
     AuthenticationError: MockE2BError,

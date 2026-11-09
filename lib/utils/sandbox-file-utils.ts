@@ -137,7 +137,7 @@ type SandboxUploadFailureDetail = {
   sandboxReadinessReason: SandboxReadinessFailureReason;
   readinessProbeReason?: SandboxUploadReadinessProbeReason;
   commandFailureContext?: AttachmentCommandFailureContext;
-  sandboxProvider?: "e2b";
+  sandboxProvider?: "docker";
   errorName?: string;
   acquisitionStage?: CloudAcquisitionStage;
   errorCode?: string;
@@ -188,7 +188,7 @@ const MAX_UPLOAD_FAILURE_CAUSE_LENGTH = 1000;
 const ACQUISITION_ERROR_NAMES = new Set([
   "CloudAcquisitionTimeoutError",
   "CloudAcquisitionBudgetExhaustedError",
-  "E2BAcquisitionError",
+  "SandboxAcquisitionError",
   "CloudWorkspaceUnavailableError",
 ]);
 
@@ -454,7 +454,7 @@ const runSandboxCommand = async (
 };
 
 /**
- * E2B uses /home/user/upload; any local connection uses /tmp/hackerai-upload
+ * Cloud sandbox uses /home/user/upload; any local connection uses /tmp/hackerai-upload
  * since the host machine may not have /home/user (e.g. macOS in dangerous mode).
  */
 export const getUploadBasePath = (
@@ -909,7 +909,7 @@ export const prepareLocalDesktopAttachmentsForTrigger = (
 
 /**
  * Downloads a file from URL to sandbox path
- * Works with both E2B and CentrifugoSandbox
+ * Works with both cloud and CentrifugoSandbox
  */
 const downloadFileToSandbox = async (
   sandbox: any,
@@ -931,7 +931,7 @@ const downloadFileToSandbox = async (
     return;
   }
 
-  // E2B sandbox - use curl with --create-dirs to avoid a separate mkdir race
+  // Cloud sandbox - use curl with --create-dirs to avoid a separate mkdir race
   const escapedUrl = url.replace(/'/g, "'\\''");
   const escapedLocalPath = localPath.replace(/'/g, "'\\''");
 
@@ -1113,11 +1113,11 @@ const stageSandboxFile = async (
 
     const sandboxFields = getSandboxLogFields(sandbox);
     const diagnostics =
-      sandboxFields.sandbox_provider === "e2b" && probeBudget.remaining-- > 0
+      sandboxFields.sandbox_provider === "docker" && probeBudget.remaining-- > 0
         ? await probeSandboxUploadWrite(sandbox, file.localPath, signal)
         : {
             probe_status:
-              sandboxFields.sandbox_provider === "e2b"
+              sandboxFields.sandbox_provider === "docker"
                 ? "budget_exhausted"
                 : "not_e2b",
           };
@@ -1190,7 +1190,7 @@ const stageSandboxFile = async (
     } catch (fallbackError) {
       throwIfAttachmentAborted(signal, fallbackError);
       recordOutcome("unavailable", transferError);
-      // E2B throws for a nonzero exit instead of returning it. A failed
+      // The cloud sandbox throws for a nonzero exit instead of returning it. A failed
       // best-effort directory probe must not replace the transfer cause.
       throw transferError;
     }
@@ -1741,7 +1741,7 @@ export const getSandboxUploadUserMessage = (
         [
           "CloudAcquisitionTimeoutError",
           "CloudAcquisitionBudgetExhaustedError",
-          "E2BAcquisitionError",
+          "SandboxAcquisitionError",
         ].includes(result.failureDetails[0].errorName ?? "")
       ) {
         return "Cloud connection timed out before preparing your attachment. Your workspace is preserved. Try again shortly.";

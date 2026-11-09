@@ -27,7 +27,7 @@ You'll need the following accounts:
 
 - [OpenRouter](https://openrouter.ai/) - AI model provider
 - [OpenAI](https://platform.openai.com/) - Identifies security requests that should use [abliteration.ai](https://abliteration.ai/) models
-- [E2B](https://e2b.dev/) - Isolated cloud execution in Agent mode
+- [Docker](https://www.docker.com/) - Self-hosted isolated execution in Agent mode
 - [Convex](https://www.convex.dev/) - Database and backend
 - [Amazon S3](https://aws.amazon.com/s3/) - File storage
 - [WorkOS](https://workos.com/) - Authentication and user management
@@ -108,7 +108,7 @@ To use the agent locally:
    Vercel): `NEXT_PUBLIC_CONVEX_URL`, `CONVEX_SERVICE_ROLE_KEY`,
    `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `AWS_S3_ACCESS_KEY_ID`,
    `AWS_S3_SECRET_ACCESS_KEY`, `AWS_S3_REGION`, `AWS_S3_BUCKET_NAME`, and
-   `E2B_API_KEY`. Cloud Agent execution uses E2B.
+   `DOCKER_SANDBOX_IMAGE`. Cloud Agent execution uses Docker.
    Add any optional keys you use
    (`ABLITERATION_API_KEY`, `PERPLEXITY_API_KEY`, `JINA_API_KEY`, etc.).
 3. Start the worker in a third terminal:

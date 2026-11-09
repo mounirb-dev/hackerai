@@ -1,5 +1,5 @@
 import { phLogger } from "@/lib/posthog/server";
-import { classifyE2BError } from "@/lib/ai/tools/utils/e2b-errors";
+import { classifySandboxError } from "@/lib/ai/tools/utils/sandbox-errors";
 
 /**
  * Creates a logger function matching the retry-with-backoff callback signature.
@@ -21,7 +21,7 @@ export function createRetryLogger(
         error instanceof Error ? error.message : String(error);
       if (error instanceof Error && error.stack)
         fields.errorStack = error.stack;
-      const category = classifyE2BError(error);
+      const category = classifySandboxError(error);
       if (category !== "unknown") {
         fields.e2bErrorCategory = category;
         fields.e2bErrorType =

@@ -7,7 +7,7 @@ import type { AnySandbox } from "@/types";
 import {
   getSandboxLogFields,
   isCentrifugoSandbox,
-  isE2BSandbox,
+  isCloudSandbox,
 } from "./sandbox-types";
 import { getSandboxFileName } from "./platform-utils";
 import { buildSandboxCommandOptions } from "./sandbox-command-options";
@@ -487,7 +487,7 @@ async function uploadGeneratedFileFromSandboxToUrl(args: {
   };
 
   if (
-    !isE2BSandbox(sandbox) &&
+    !isCloudSandbox(sandbox) &&
     "uploadToUrl" in sandbox.files &&
     typeof sandbox.files.uploadToUrl === "function"
   ) {

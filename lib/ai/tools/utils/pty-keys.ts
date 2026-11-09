@@ -6,7 +6,7 @@
  * Canonical mapping of tmux key names → raw escape sequences / characters.
  *
  * Shared across:
- *  - E2B PTY sessions  (translateInput)
+ *  - Cloud sandbox PTY sessions  (translateInput)
  *  - Local tmux sessions (TMUX_SPECIAL_KEYS set)
  *  - UI display         (reverse lookup for formatSendInput)
  */

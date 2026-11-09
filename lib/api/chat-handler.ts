@@ -689,8 +689,8 @@ export const createChatHandler = () => {
       // PostHog client for analytics.
       posthog ??= PostHogClient();
       const cloudSandboxSelection = {
-        provider: "e2b",
-        reason: "e2b_only",
+        provider: "docker",
+        reason: "docker_only",
       } as const;
 
       const fileCounts = countFileAttachments(truncatedMessages);
@@ -947,7 +947,6 @@ export const createChatHandler = () => {
             });
 
             const {
-              cloudNetworkPrompt,
               getCaptchaReceiptPrompt,
               tools,
               ensureSandbox,
@@ -1727,7 +1726,6 @@ export const createChatHandler = () => {
               },
               trackedProvider,
               currentSystemPrompt,
-              cloudNetworkPrompt,
               getCaptchaReceiptPrompt,
               tools,
               mode,

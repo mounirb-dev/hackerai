@@ -5,11 +5,6 @@ import { getConvexClient as goalConvex } from "@/lib/db/convex-client";
 import { goalServiceKey, reconcileGoal } from "@/lib/goals/server";
 import type { GoalContract } from "@/lib/goals/contracts";
 import { validGoalRequest } from "@/lib/goals/contracts";
-import { resolveCloudWorkspaceRegion } from "@/lib/ai/tools/utils/cloud-workspace-routing";
-import {
-  readCloudWorkspaceState,
-  assertCloudWorkspaceAvailable,
-} from "@/lib/ai/tools/utils/cloud-workspace-guard";
 import {
   enforceRegionalSubscriptionFirst,
   subscriptionFirstCountryFromRequest,
@@ -755,25 +750,7 @@ export const createAgentTriggerPost = ({
       });
 
       stage = "workspace_routing";
-      const triggerRegion =
-        !sandboxPreference || sandboxPreference === "e2b"
-          ? await resolveCloudWorkspaceRegion({
-              userId,
-              preferredRegion: requestTriggerRegion,
-              signal: req.signal,
-            })
-          : requestTriggerRegion;
-
-      // Serialize cloud Agent admission with recovery before a run is queued.
-      // The same activity/fence CAS protects acquisition and cached clients.
-      if (!sandboxPreference || sandboxPreference === "e2b") {
-        const workspace = await readCloudWorkspaceState(userId);
-        await assertCloudWorkspaceAvailable(
-          userId,
-          workspace?.phase === "e2b" ? workspace.destinationId : undefined,
-          triggerRegion,
-        );
-      }
+      const triggerRegion = requestTriggerRegion;
 
       const requestMessages = Array.isArray(messages) ? messages : [];
       if (!regenerate && !isAutoContinue && requestMessages.length === 0) {

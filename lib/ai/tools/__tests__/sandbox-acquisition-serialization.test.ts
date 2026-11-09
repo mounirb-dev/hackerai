@@ -68,11 +68,11 @@ jest.mock("../utils/sandbox-manager", () => ({
 }));
 
 jest.mock("../utils/sandbox-types", () => ({
-  isE2BSandbox: (...args: unknown[]) => mockIsE2BSandbox(...args),
+  isCloudSandbox: (...args: unknown[]) => mockIsE2BSandbox(...args),
   isCentrifugoSandbox: (...args: unknown[]) => !mockIsE2BSandbox(...args),
   getCloudSandboxProviderForInstance: (
     sandbox: { provider?: string } | null,
-  ) => (sandbox?.provider === "e2b" ? sandbox.provider : null),
+  ) => (sandbox?.provider === "docker" ? sandbox.provider : null),
 }));
 
 jest.mock("../utils/sandbox-fallback", () => ({
@@ -91,7 +91,8 @@ jest.mock("@/lib/logger", () => ({
 import { createTools } from "..";
 import { createRunTerminalCmd } from "../run-terminal-cmd";
 import { getPostHogBooleanFlagDecisionForUser } from "@/lib/posthog/server";
-import { E2B_COST_PER_MS } from "../utils/e2b-cost";
+// Self-hosted containers carry no per-second provider charge.
+const SANDBOX_COST_PER_MS = 0;
 import { BrowserSessions } from "../utils/browser-sessions";
 import { DETECT_CHALLENGES_SCRIPT } from "../../captcha/detection";
 
@@ -311,41 +312,6 @@ describe("sandbox acquisition serialization", () => {
     expect(mockNetworkQuery).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ["agent", "e2b", true],
-    ["agent", undefined, true],
-    ["agent", "desktop", false],
-    ["agent", "connection-1", false],
-    ["ask", "e2b", false],
-  ] as const)(
-    "includes network context for %s/%s only when executing in E2B",
-    async (mode, preference, expected) => {
-      mockNetworkQuery.mockResolvedValue({
-        policy: { mode: "offline", allow: [] },
-        revision: 1,
-        status: "ready",
-      });
-      const { cloudNetworkPrompt } = createTools(
-        "user-1",
-        "chat-1",
-        {} as never,
-        mode,
-        {} as never,
-        [],
-        false,
-        undefined,
-        preference,
-        "test-service-key",
-      );
-      const prompt = await cloudNetworkPrompt();
-      if (expected) expect(prompt).toContain("Saved access: No internet");
-      else {
-        expect(prompt).toBe("");
-        expect(mockNetworkQuery).not.toHaveBeenCalled();
-      }
-    },
-  );
-
   it("does not let a pre-reset acquisition replace the refreshed sandbox", async () => {
     let resolveFirst!: (value: { sandbox: { id: string } }) => void;
     const firstAcquisition = new Promise<{ sandbox: { id: string } }>(
@@ -388,7 +354,7 @@ describe("sandbox acquisition serialization", () => {
   it("accounts for E2B runtime", async () => {
     jest.useFakeTimers();
     mockIsE2BSandbox.mockImplementation(
-      (sandbox: { provider?: string } | null) => sandbox?.provider === "e2b",
+      (sandbox: { provider?: string } | null) => sandbox?.provider === "docker",
     );
     const { getSandboxSessionCost, getSandboxSessionUsage } = createTools(
       "user-1",
@@ -403,26 +369,27 @@ describe("sandbox acquisition serialization", () => {
       "service-key",
     );
 
-    mockTrackSandboxUsage?.({ provider: "e2b" });
+    mockTrackSandboxUsage?.({ provider: "docker" });
     jest.advanceTimersByTime(1_000);
 
     await expect(getSandboxSessionCost()).resolves.toBeCloseTo(
-      E2B_COST_PER_MS * 1_000,
+      SANDBOX_COST_PER_MS * 1_000,
       12,
     );
     await expect(getSandboxSessionUsage()).resolves.toEqual({
-      totalCostDollars: E2B_COST_PER_MS * 1_000,
-      e2bRuntimeMs: 1_000,
-      e2bCostDollars: E2B_COST_PER_MS * 1_000,
+      totalCostDollars: SANDBOX_COST_PER_MS * 1_000,
+      sandboxRuntimeMs: 1_000,
+      sandboxCostDollars: SANDBOX_COST_PER_MS * 1_000,
     });
   });
 
-  it.each(["e2b"])(
+  it.each(["docker"])(
     "does not charge shared %s runtime to a child agent",
     async (provider) => {
       jest.useFakeTimers();
       mockIsE2BSandbox.mockImplementation(
-        (sandbox: { provider?: string } | null) => sandbox?.provider === "e2b",
+        (sandbox: { provider?: string } | null) =>
+          sandbox?.provider === "docker",
       );
       const { getSandboxSessionCost, getSandboxSessionUsage } = createTools(
         "user-1",
@@ -456,8 +423,8 @@ describe("sandbox acquisition serialization", () => {
       await expect(getSandboxSessionCost()).resolves.toBe(0);
       await expect(getSandboxSessionUsage()).resolves.toEqual({
         totalCostDollars: 0,
-        e2bRuntimeMs: 0,
-        e2bCostDollars: 0,
+        sandboxRuntimeMs: 0,
+        sandboxCostDollars: 0,
       });
     },
   );
@@ -476,20 +443,20 @@ describe("sandbox acquisition serialization", () => {
       "e2b",
       "service-key",
     );
-    mockTrackSandboxUsage?.({ provider: "e2b", sandboxId: "e2b-1" });
+    mockTrackSandboxUsage?.({ provider: "docker", sandboxId: "docker-1" });
     jest.advanceTimersByTime(2_000);
-    mockTrackSandboxUsage?.({ provider: "e2b", sandboxId: "e2b-1" });
+    mockTrackSandboxUsage?.({ provider: "docker", sandboxId: "docker-1" });
     jest.advanceTimersByTime(3_000);
     await expect(getSandboxSessionUsage()).resolves.toMatchObject({
-      e2bRuntimeMs: 5_000,
-      e2bCostDollars: 5_000 * E2B_COST_PER_MS,
+      sandboxRuntimeMs: 5_000,
+      sandboxCostDollars: 5_000 * SANDBOX_COST_PER_MS,
     });
   });
 
   it("stops cloud runtime billing while a non-cloud sandbox is active", async () => {
     jest.useFakeTimers();
     mockIsE2BSandbox.mockImplementation(
-      (sandbox: { provider?: string } | null) => sandbox?.provider === "e2b",
+      (sandbox: { provider?: string } | null) => sandbox?.provider === "docker",
     );
     const { getSandboxSessionUsage } = createTools(
       "user-1",
@@ -504,17 +471,17 @@ describe("sandbox acquisition serialization", () => {
       "service-key",
     );
 
-    mockTrackSandboxUsage?.({ provider: "e2b" });
+    mockTrackSandboxUsage?.({ provider: "docker" });
     jest.advanceTimersByTime(1_000);
     mockTrackSandboxUsage?.({ provider: "local" });
     jest.advanceTimersByTime(2_000);
-    mockTrackSandboxUsage?.({ provider: "e2b" });
+    mockTrackSandboxUsage?.({ provider: "docker" });
     jest.advanceTimersByTime(3_000);
 
     await expect(getSandboxSessionUsage()).resolves.toEqual({
-      totalCostDollars: E2B_COST_PER_MS * 4_000,
-      e2bRuntimeMs: 4_000,
-      e2bCostDollars: E2B_COST_PER_MS * 4_000,
+      totalCostDollars: SANDBOX_COST_PER_MS * 4_000,
+      sandboxRuntimeMs: 4_000,
+      sandboxCostDollars: SANDBOX_COST_PER_MS * 4_000,
     });
   });
 });

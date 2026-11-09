@@ -1230,7 +1230,7 @@ const saveTranscriptToSandbox = async (
       const dir = getSandboxArtifactDirectory(sandbox, "agent-transcripts");
       const path = `${dir}/${transcriptId}.json`;
 
-      // E2B needs an explicit mkdir since its files.write doesn't create parents.
+      // The cloud sandbox needs an explicit mkdir since its files.write doesn't create parents.
       // CentrifugoSandbox's files.write already calls ensureDirectory internally
       // with proper Windows path/shell handling, so skip the raw mkdir for it.
       if (isCloudSandbox(sandbox)) {
@@ -1241,7 +1241,7 @@ const saveTranscriptToSandbox = async (
       // tool-call/tool-result parts) when available, otherwise UI messages
       const content = JSON.stringify(modelMessages ?? messages, null, 2);
       if (isCloudSandbox(sandbox)) {
-        // E2B uploads via HTTP — no shell argument limits, string is fine
+        // Cloud uploads via HTTP — no shell argument limits, string is fine
         await sandbox.files.write(path, content);
       } else {
         // ConvexSandbox/TauriSandbox: pass as ArrayBuffer to trigger binary

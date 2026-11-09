@@ -116,7 +116,7 @@ ${largeOutputGuidance}
         .optional()
         .default(false)
         .describe(
-          "When true, opens an input-capable PTY and returns a reusable `session` ID. Use `interact_terminal_session` to continue it with send/wait/view/kill actions. Use for anything that prompts: REPLs (python, node, mysql), SSH, sudo, confirmations, interactive installers. Foreground interactive=false commands can also return a wait/view/kill session if they exceed the initial timeout, but those sessions do not accept send. E2B and local (Centrifugo) sandboxes only.",
+          "When true, opens an input-capable PTY and returns a reusable `session` ID. Use `interact_terminal_session` to continue it with send/wait/view/kill actions. Use for anything that prompts: REPLs (python, node, mysql), SSH, sudo, confirmations, interactive installers. Foreground interactive=false commands can also return a wait/view/kill session if they exceed the initial timeout, but those sessions do not accept send. Cloud and local (Centrifugo) sandboxes only.",
         ),
     }),
   });

@@ -11,7 +11,7 @@ import type {
   TerminalTimeoutRecoveryOutcome,
 } from "@/types";
 import { createRetryLogger } from "@/lib/posthog/worker";
-import { isE2BSandbox } from "./sandbox-types";
+import { isCloudSandbox } from "./sandbox-types";
 import { retryWithBackoff } from "./retry-with-backoff";
 import {
   AuthenticationError,
@@ -22,7 +22,7 @@ import {
   NotFoundError,
   RateLimitError,
   TimeoutError,
-} from "./e2b-errors";
+} from "./sandbox-errors";
 import { classifySandboxReadinessFailureSignal } from "./sandbox-readiness-failure";
 
 const sandboxHealthLogger = createRetryLogger("sandbox-health");
@@ -33,12 +33,12 @@ const FAILURE_METRICS_TIMEOUT_MS = 1000;
 
 /**
  * Check sandbox resource metrics and return a diagnostic summary.
- * Returns null if metrics are unavailable (non-E2B sandbox or API error).
+ * Returns null if metrics are unavailable (non-cloud sandbox or API error).
  */
 async function checkSandboxMetrics(
   sandbox: AnySandbox,
 ): Promise<(SandboxResourceMetrics & { warning: string | null }) | null> {
-  if (!isE2BSandbox(sandbox)) return null;
+  if (!isCloudSandbox(sandbox)) return null;
 
   try {
     // Keep health diagnostics scoped to recent activity, not the sandbox's lifetime.
@@ -127,7 +127,7 @@ export async function observeSandboxResourceFailure(
     isBackground?: boolean;
   } = {},
 ): Promise<void> {
-  if (!observer || !isE2BSandbox(sandbox)) return;
+  if (!observer || !isCloudSandbox(sandbox)) return;
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const metrics = await Promise.race([
@@ -174,7 +174,7 @@ export function observeTerminalTimeoutRecovery(
 }
 
 /**
- * Reduce E2B/OS errors to privacy-safe, low-cardinality readiness categories.
+ * Reduce sandbox/OS errors to privacy-safe, low-cardinality readiness categories.
  * Never include raw messages because command/runtime errors may contain user data.
  */
 export function classifySandboxReadinessFailureReason(
@@ -182,7 +182,7 @@ export function classifySandboxReadinessFailureReason(
 ): SandboxReadinessFailureReason {
   if (!(error instanceof Error)) return "unknown";
 
-  // Check wrapped message/name signals before SDK classes. E2B can wrap a
+  // Check wrapped message/name signals before SDK classes. The SDK can wrap a
   // failed fork/exec in InvalidArgumentError even when caller input is valid.
   const signal = classifySandboxReadinessFailureSignal(error);
   if (signal) return signal;
@@ -250,8 +250,8 @@ export async function waitForSandboxReady(
         let observedMetrics = false;
 
         // isRunning() is a useful diagnostic, but it is not authoritative for
-        // readiness: a paused E2B sandbox can be resumed by the command below.
-        if (isE2BSandbox(sandbox)) {
+        // readiness: a paused cloud sandbox can be resumed by the command below.
+        if (isCloudSandbox(sandbox)) {
           let running = false;
           try {
             running = await sandbox.isRunning();
@@ -291,7 +291,7 @@ export async function waitForSandboxReady(
           // If the status probe saw a paused sandbox (or failed), the command
           // above is the operation that can auto-resume it. Sample metrics only
           // after that succeeds so a paused state is not treated as a failure.
-          if (isE2BSandbox(sandbox) && !observedMetrics) {
+          if (isCloudSandbox(sandbox) && !observedMetrics) {
             const metrics = await checkSandboxMetrics(sandbox);
             if (metrics) {
               notifyResourceObserver(onResourceMetrics, {

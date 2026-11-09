@@ -1,5 +1,5 @@
 import type { AnySandbox } from "@/types";
-import { isCentrifugoSandbox, isE2BSandbox } from "./sandbox-types";
+import { isCentrifugoSandbox, isCloudSandbox } from "./sandbox-types";
 
 export const MAX_COMMAND_EXECUTION_TIME = 10 * 60 * 1000; // 10 minutes
 
@@ -17,14 +17,14 @@ const LOCAL_EXTRA_PATH_DIRS = [
 ].join(":");
 
 /**
- * Prepend common tool directories to PATH for local (non-E2B) sandboxes.
- * E2B sandboxes have their own pre-configured PATH and are left untouched.
+ * Prepend common tool directories to PATH for local (non-cloud) sandboxes.
+ * Cloud sandboxes have their own pre-configured PATH and are left untouched.
  */
 export function augmentCommandPath(
   command: string,
   sandbox: AnySandbox,
 ): string {
-  if (isE2BSandbox(sandbox)) return command;
+  if (isCloudSandbox(sandbox)) return command;
   // Windows local sandboxes use cmd.exe or git-bash — Unix PATH dirs
   // ($HOME/go/bin, /opt/homebrew/bin, etc.) don't apply, and `export`
   // syntax would break cmd.exe entirely.
@@ -35,7 +35,7 @@ export function augmentCommandPath(
 /**
  * Build command options for sandbox execution.
  *
- * E2B sandbox requires user: "root" and cwd: "/home/user" for network tools
+ * Cloud sandbox requires user: "root" and cwd: "/home/user" for network tools
  * (ping, nmap, etc.) to work without sudo. CentrifugoSandbox (Docker) uses
  * --cap-add flags instead (NET_RAW, NET_ADMIN, SYS_PTRACE).
  *
@@ -61,16 +61,16 @@ export function buildSandboxCommandOptions(
 } {
   return {
     timeoutMs: MAX_COMMAND_EXECUTION_TIME,
-    // E2B specific: run as root with /home/user as working directory
+    // Cloud sandbox specific: run as root with /home/user as working directory
     // This allows network tools (ping, nmap, etc.) to work without sudo
-    ...(isE2BSandbox(sandbox) && {
+    ...(isCloudSandbox(sandbox) && {
       user: "root" as const,
       cwd: "/home/user",
     }),
-    // E2B ignores envVars: its CommandStartOpts uses envs. The owned local
+    // Cloud sandbox ignores envVars: its CommandStartOpts uses envs. The owned local
     // adapters use envVars instead.
     ...(extraEnvVars &&
-      (isE2BSandbox(sandbox)
+      (isCloudSandbox(sandbox)
         ? { envs: extraEnvVars }
         : { envVars: extraEnvVars })),
     ...(handlers && {

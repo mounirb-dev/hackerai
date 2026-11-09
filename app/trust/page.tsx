@@ -78,8 +78,8 @@ const subprocessors: Subprocessor[] = [
     dataCategories: "URLs and retrieved page content",
   },
   {
-    name: "E2B",
-    purpose: "Cloud sandboxes (US or EU, following the workspace region)",
+    name: "Docker (self-hosted)",
+    purpose: "Isolated sandbox containers on the operator's own infrastructure",
     dataCategories: "Commands, command output, files inside the sandbox",
   },
   {
@@ -258,9 +258,9 @@ function TrustContent() {
           <div className="grid gap-6 md:grid-cols-2">
             <Section icon={Terminal} title="Execution environments">
               <p>
-                By default, terminal and browser actions run in an isolated E2B
-                cloud sandbox. You can delete your sandboxes at any time from
-                Settings &rarr; Data controls.
+                By default, terminal and browser actions run in an isolated
+                Docker sandbox container. You can delete your sandboxes at any
+                time from Settings &rarr; Data controls.
               </p>
               <p>
                 A local execution mode is also available. It runs commands

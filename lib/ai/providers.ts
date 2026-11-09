@@ -17,6 +17,12 @@ import {
   ABLITERATION_MODEL_KEY,
 } from "@/lib/ai/abliteration";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import {
+  getOllamaModelId,
+  isOllamaEnabled,
+  ollama,
+  ollamaSupportsVision,
+} from "@/lib/ai/ollama";
 import type { SelectedModel } from "@/types/chat";
 import { openrouterAttributionHeaders } from "@/lib/ai/openrouter-attribution";
 
@@ -1364,7 +1370,7 @@ const buildProviderMap = (
     "auxiliary-vision-model": or(AUXILIARY_VISION_SLUG),
   }) as Record<string, any>;
 
-const baseProviders: ReturnType<typeof buildProviderMap> &
+const hostedProviders: ReturnType<typeof buildProviderMap> &
   Record<typeof INFERENCE_CYBER_MODEL_KEY, ReturnType<typeof inference>> = {
   [INFERENCE_CYBER_MODEL_KEY]: inference(INFERENCE_CYBER_MODEL_ID),
   ...buildProviderMap(openrouter),
@@ -1373,6 +1379,16 @@ const baseProviders: ReturnType<typeof buildProviderMap> &
     ABLITERATION_LARGE_FLASH_MODEL_ID,
   ),
 };
+
+// LLM_PROVIDER=ollama sends every model key to the configured local model.
+const baseProviders: typeof hostedProviders = isOllamaEnabled()
+  ? (Object.fromEntries(
+      Object.keys(hostedProviders).map((key) => [
+        key,
+        ollama(getOllamaModelId()),
+      ]),
+    ) as typeof hostedProviders)
+  : hostedProviders;
 
 export type ModelName = keyof typeof baseProviders;
 
@@ -1492,6 +1508,7 @@ function isGrokModel(modelName: string): boolean {
 
 export function supportsMultimodalToolResults(modelName?: string): boolean {
   if (!modelName) return false;
+  if (isOllamaEnabled()) return ollamaSupportsVision();
 
   const normalized = modelName.toLowerCase();
 

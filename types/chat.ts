@@ -309,7 +309,7 @@ export interface SidebarTerminal {
   isBackground?: boolean;
   /** Legacy run_terminal_cmd: input.interactive — true if PTY-backed session. */
   isInteractive?: boolean;
-  /** E2B process ID (only for E2B sandboxes). */
+  /** Cloud sandbox process ID (only for cloud sandboxes). */
   pid?: number | null;
   /** Local session identifier (only for local sandboxes). */
   session?: string | null;

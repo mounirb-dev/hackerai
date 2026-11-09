@@ -1,0 +1,108 @@
+# HackerAI on Dokploy: web app + local LLM (Ollama) + sandbox runtime access.
+#
+# Sandboxes are Docker containers created on the same host. The app never gets
+# the raw Docker socket: it talks to a restricted socket proxy instead.
+#
+# Not included (bring your own): Convex (database), WorkOS (auth), S3 storage.
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
+        NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
+        NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${NEXT_PUBLIC_WORKOS_REDIRECT_URI}
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
+      NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
+      CONVEX_SERVICE_ROLE_KEY: ${CONVEX_SERVICE_ROLE_KEY}
+      WORKOS_API_KEY: ${WORKOS_API_KEY}
+      WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID}
+      WORKOS_COOKIE_PASSWORD: ${WORKOS_COOKIE_PASSWORD}
+      NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${NEXT_PUBLIC_WORKOS_REDIRECT_URI}
+      ACCOUNT_IDENTITY_HMAC_SECRET: ${ACCOUNT_IDENTITY_HMAC_SECRET}
+      AWS_S3_ACCESS_KEY_ID: ${AWS_S3_ACCESS_KEY_ID}
+      AWS_S3_SECRET_ACCESS_KEY: ${AWS_S3_SECRET_ACCESS_KEY}
+      AWS_S3_REGION: ${AWS_S3_REGION:-us-east-1}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME}
+      # Local LLM
+      LLM_PROVIDER: ollama
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      OLLAMA_VISION: ${OLLAMA_VISION:-false}
+      # Sandbox runtime
+      DOCKER_HOST: tcp://docker-proxy:2375
+      DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
+      SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-2048}
+      SANDBOX_CPUS: ${SANDBOX_CPUS:-2}
+      SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-1800}
+    depends_on:
+      - docker-proxy
+      - ollama
+    networks:
+      - default
+      - dokploy-network
+    expose:
+      - "3000"
+
+  # Restricted Docker API: only what the sandbox provisioner needs.
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    restart: unless-stopped
+    environment:
+      POST: 1
+      DELETE: 1
+      CONTAINERS: 1
+      EXEC: 1
+      IMAGES: 1
+      VOLUMES: 1
+      # Everything else (swarm, secrets, services, networks, ...) stays denied.
+      # NOTE: the proxy filters by method+path only, not request bodies. A
+      # compromised app could still POST /containers/create with Privileged or
+      # host binds, so this limits surface but is not a boundary against app RCE.
+      # HostConfig is built server-side from env; never expose the proxy port.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    # GPU (optional): uncomment on a host with the NVIDIA container toolkit.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # One-shot: download the chat model and the sandbox image before first use.
+  bootstrap:
+    image: docker:cli
+    restart: "no"
+    environment:
+      DOCKER_HOST: tcp://docker-proxy:2375
+      DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+    depends_on:
+      - docker-proxy
+      - ollama
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        docker pull "$$DOCKER_SANDBOX_IMAGE"
+        wget -q -O- --post-data="{\"name\":\"$$OLLAMA_MODEL\",\"stream\":false}" \
+          --header="Content-Type: application/json" http://ollama:11434/api/pull
+
+volumes:
+  ollama-models:
+
+networks:
+  dokploy-network:
+    external: true

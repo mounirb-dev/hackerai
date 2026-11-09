@@ -1,2 +1,2 @@
-export type CloudSandboxProvider = "e2b";
-export type CloudSandboxSelectionReason = "e2b_only" | "recovered_workspace";
+export type CloudSandboxProvider = "docker";
+export type CloudSandboxSelectionReason = "docker_only";

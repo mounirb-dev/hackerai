@@ -156,14 +156,7 @@ describe("sandbox Dockerfile cache cleanup", () => {
     }
   });
 
-  test("keeps the E2B Dockerfile build single-stage", () => {
-    const template = readFileSync(
-      resolve(process.cwd(), "e2b/template.ts"),
-      "utf8",
-    );
-
+  test("keeps the sandbox Dockerfile build single-stage", () => {
     expect(dockerfile.match(/^FROM\b/gm)).toHaveLength(1);
-    expect(template).toContain(".fromDockerfile(");
-    expect(template).toContain('resolve(__dirname, "../docker/Dockerfile")');
   });
 });

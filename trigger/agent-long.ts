@@ -1948,7 +1948,7 @@ export const agentLongTask = task({
     let cleanupBrowserSessions = async () => {};
     let approvalSessionClosed = false;
     let cloudSandboxLifecyclePromise: Promise<void> | undefined;
-    let finishE2BIdleLeaseRelease: (() => Promise<void>) | undefined;
+    let finishCloudIdleLeaseRelease: (() => Promise<void>) | undefined;
     const finishCloudSandboxLifecycle = () => {
       // onCancel can arrive while finally is still closing the session. Do not
       // cache that pending result and prevent finally from clearing it later.
@@ -2195,8 +2195,8 @@ export const agentLongTask = task({
         selectedModelOverride,
       });
       const cloudSandboxSelection = {
-        provider: "e2b",
-        reason: "e2b_only",
+        provider: "docker",
+        reason: "docker_only",
       } as const;
       const cloudSandboxProvider = cloudSandboxSelection.provider;
       const regionalFreeLimits = getRegionalFreeLimits({
@@ -3078,7 +3078,6 @@ export const agentLongTask = task({
               onApprovalWait: runTimingTracker.recordApprovalWait,
             });
             const {
-              cloudNetworkPrompt,
               getCaptchaReceiptPrompt,
               tools: baseTools,
               ensureSandbox,
@@ -3087,8 +3086,8 @@ export const agentLongTask = task({
               sandboxManager,
               getSandboxSessionCost,
               getSandboxSessionUsage,
-              releaseE2BSandboxIdleLease,
-              stopE2BSandboxRunLeaseHeartbeat,
+              releaseSandboxIdleLease,
+              stopSandboxRunLeaseHeartbeat,
               cleanupBrowserSessions: cleanupToolBrowsers,
               setCurrentModelName,
               getToolsForModel: getBaseToolsForModel,
@@ -3131,7 +3130,7 @@ export const agentLongTask = task({
                 triggerRegion,
                 environment: ctx.environment.type,
                 signal: userStopSignal.signal,
-                keepE2BLeaseAliveForRun: true,
+                keepSandboxLeaseAliveForRun: true,
                 onBrowserOwnershipLost: () =>
                   stopSignal.abort("browser_ownership_lost"),
                 additionalTools: (toolContext) => ({
@@ -3194,9 +3193,9 @@ export const agentLongTask = task({
             );
             const tools = baseTools;
             const getToolsForModel = getBaseToolsForModel;
-            finishE2BIdleLeaseRelease = async () => {
-              await stopE2BSandboxRunLeaseHeartbeat();
-              await releaseE2BSandboxIdleLease();
+            finishCloudIdleLeaseRelease = async () => {
+              await stopSandboxRunLeaseHeartbeat();
+              await releaseSandboxIdleLease();
             };
             if (genericDelegationEnabled) {
               captureSubagentLifecycleEvent("subagent_available", {
@@ -4137,7 +4136,6 @@ export const agentLongTask = task({
               },
               trackedProvider,
               currentSystemPrompt,
-              cloudNetworkPrompt,
               getCaptchaReceiptPrompt,
               tools,
               mode,
@@ -5476,11 +5474,7 @@ export const agentLongTask = task({
                                         ) ?? raw;
                                       requiredContextTokens =
                                         estimateSummaryInputTokens(projected) +
-                                        streamCtx.systemPromptTokens +
-                                        safeCountTokens(
-                                          (await streamCtx.cloudNetworkPrompt?.()) ??
-                                            "",
-                                        );
+                                        streamCtx.systemPromptTokens;
                                     } catch {
                                       // Unknown input size cannot admit the smaller fallback.
                                     }
@@ -6311,8 +6305,8 @@ export const agentLongTask = task({
         }
       }
       await cleanupBrowserSessions();
-      await finishE2BIdleLeaseRelease?.().catch((error) => {
-        triggerLogger.warn("[agent-long] E2B idle lease release failed", {
+      await finishCloudIdleLeaseRelease?.().catch((error) => {
+        triggerLogger.warn("[agent-long] cloud idle lease release failed", {
           event: "agent_e2b_idle_lease_release_failed",
           user_id: userId,
           chat_id: chatId,

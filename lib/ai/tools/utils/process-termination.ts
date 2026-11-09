@@ -1,11 +1,11 @@
 import type { AnySandbox } from "@/types";
-import { isE2BSandbox } from "./sandbox-types";
+import { isCloudSandbox } from "./sandbox-types";
 
 /**
  * Verifies that a process has been terminated by checking if it still exists.
  * Uses the `ps -p ${pid}` command pattern established in BackgroundProcessTracker.
  *
- * @param sandbox - The sandbox instance (E2B or CentrifugoSandbox)
+ * @param sandbox - The sandbox instance (cloud or CentrifugoSandbox)
  * @param pid - Process ID to check
  * @param maxAttempts - Number of verification attempts (default: 3)
  * @param delayMs - Delay between attempts in milliseconds (default: 100)
@@ -46,9 +46,9 @@ export async function verifyProcessTerminated(
 
 /**
  * Force kills a process using SIGKILL.
- * Uses E2B's native kill command for E2B Sandbox, or kill -9 for CentrifugoSandbox.
+ * Uses the native kill command for the cloud sandbox, or kill -9 for CentrifugoSandbox.
  *
- * @param sandbox - The sandbox instance (E2B or CentrifugoSandbox)
+ * @param sandbox - The sandbox instance (cloud or CentrifugoSandbox)
  * @param pid - Process ID to force kill
  * @returns Promise<boolean> - true if kill command succeeded, false otherwise
  */
@@ -57,8 +57,8 @@ export async function forceKillProcess(
   pid: number,
 ): Promise<boolean> {
   try {
-    if (isE2BSandbox(sandbox)) {
-      // Use E2B's native kill method which uses SIGKILL
+    if (isCloudSandbox(sandbox)) {
+      // Use the sandbox's native kill method which uses SIGKILL
       const killed = await sandbox.commands.kill(pid);
 
       if (!killed) {
@@ -86,7 +86,7 @@ export async function forceKillProcess(
  * Attempts to terminate a process with verification and fallback.
  * First tries graceful kill, then verifies, then force kills if needed.
  *
- * @param sandbox - The sandbox instance (E2B or CentrifugoSandbox)
+ * @param sandbox - The sandbox instance (cloud or CentrifugoSandbox)
  * @param execution - The execution object with kill() method (optional for foreground commands)
  * @param pid - Process ID (if available)
  * @returns Promise<boolean> - true if termination succeeded or the process is gone

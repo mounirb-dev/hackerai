@@ -3,7 +3,7 @@ import { CAPTCHA_TOOL_HINT } from "../captcha/guidance";
 import { parseCaptchaRuntimeCommand } from "../captcha/runtime-command";
 import { trackForegroundCommand } from "./utils/foreground-commands";
 import { tool, type Tool } from "ai";
-import { CommandExitError } from "@e2b/code-interpreter";
+import { CommandExitError } from "@/lib/sandbox/docker";
 import { randomUUID } from "crypto";
 import type {
   AgentAutoReviewTerminalInspection,
@@ -24,16 +24,12 @@ import {
   observeSandboxRecovery,
   observeTerminalTimeoutRecovery,
 } from "./utils/sandbox-health";
-import {
-  isCloudSandbox,
-  isE2BSandbox,
-  isCentrifugoSandbox,
-} from "./utils/sandbox-types";
+import { isCloudSandbox, isCentrifugoSandbox } from "./utils/sandbox-types";
 import {
   buildSandboxCommandOptions,
   augmentCommandPath,
 } from "./utils/sandbox-command-options";
-import { createE2BPtyHandle } from "./utils/e2b-pty-adapter";
+import { createSandboxPtyHandle } from "./utils/sandbox-pty-adapter";
 import {
   createCommandSessionHandle,
   type CommandSessionHandle,
@@ -70,7 +66,7 @@ import {
   RUN_TERMINAL_MAX_TIMEOUT_SECONDS,
   createRunTerminalCmdToolSchema,
 } from "./schemas";
-import { withE2BSandboxLeaseHeartbeat } from "./utils/sandbox";
+import { withSandboxLeaseHeartbeat } from "./utils/sandbox";
 import {
   collectAgentAutoReviewTerminalInspection,
   getAgentAutoReviewInspectionKind,
@@ -133,7 +129,7 @@ type RunTerminalCmdInput = {
   interactive: boolean;
 };
 
-type E2BCommandHandle = {
+type CloudCommandHandle = {
   readonly pid: number;
   readonly stdout: string;
   readonly stderr: string;
@@ -296,7 +292,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
     const gateBin = path.split(":", 1)[0];
     if (!/^\/tmp\/hackerai-browser-[a-f0-9]{24}\/bin$/.test(gateBin))
       throw new Error("Browser command gate path is invalid.");
-    // E2B's command shell restores its own PATH after applying envs. Source
+    // The cloud sandbox command shell restores its own PATH after applying envs. Source
     // the command guard and export PATH inside it, including for later PTY
     // input and nested Bash scripts.
     const guard = `${gateBin}/../guard.sh`;
@@ -470,15 +466,15 @@ export const createRunTerminalCmd = (context: ToolContext) => {
         try {
           const { sandbox } = await getApprovedExecutionSandbox();
           const isCentrifugo = isCentrifugoSandbox(sandbox);
-          const isE2B = isE2BSandbox(sandbox);
+          const isCloud = isCloudSandbox(sandbox);
 
-          if (!isE2B && !isCentrifugo) {
+          if (!isCloud && !isCentrifugo) {
             return {
               result: {
                 output: "",
                 exitCode: 1,
                 error:
-                  "Interactive PTY requires E2B or local (Centrifugo) sandbox.",
+                  "Interactive PTY requires cloud or local (Centrifugo) sandbox.",
               },
             };
           }
@@ -509,7 +505,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
           // A persistent shell can launch the browser in a later send, including
           // through a script. Establish its ownership before any input runs.
           const agentBrowserEnv =
-            isE2B ||
+            isCloud ||
             (await context.browserSessions?.hasConnectedChallengeScope?.())
               ? await prepareBrowserEnv(sandbox, command, true)
               : undefined;
@@ -540,7 +536,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                   ...(agentBrowserEnv && { envs: agentBrowserEnv }),
                 });
               }
-              return createE2BPtyHandle(sandbox, {
+              return createSandboxPtyHandle(sandbox, {
                 cols,
                 rows,
                 envs: agentBrowserEnv,
@@ -552,7 +548,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
           // with its sessionId (was undefined at emitTerminal definition time).
           activePtySessionId = session.sessionId;
 
-          // For E2B, the PTY starts a bare shell — fire the command + Enter
+          // For the cloud sandbox, the PTY starts a bare shell — fire the command + Enter
           // so the shell actually runs it. For Centrifugo, the command is
           // passed in pty_create and the local runner spawns it directly.
           if (!isCentrifugo) {
@@ -583,8 +579,8 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                 { quietMs: INTERACTIVE_QUIET_WINDOW_MS },
               ),
             );
-          const delta = await (isE2B
-            ? withE2BSandboxLeaseHeartbeat(sandbox, waitForInitialOutput)
+          const delta = await (isCloud
+            ? withSandboxLeaseHeartbeat(sandbox, waitForInitialOutput)
             : waitForInitialOutput());
           await drainEmitQueue();
           const snapshots = await getSessionSnapshots(
@@ -788,7 +784,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                 logSandboxReadinessRecovery({
                   level: "error",
                   outcome: "failed",
-                  sandboxId: isE2BSandbox(reconnectedSandbox)
+                  sandboxId: isCloudSandbox(reconnectedSandbox)
                     ? reconnectedSandbox.sandboxId
                     : undefined,
                   initialFailureReason,
@@ -815,7 +811,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
               logSandboxReadinessRecovery({
                 level: "info",
                 outcome: "reconnected",
-                sandboxId: isE2BSandbox(reconnectedSandbox)
+                sandboxId: isCloudSandbox(reconnectedSandbox)
                   ? reconnectedSandbox.sandboxId
                   : undefined,
                 initialFailureReason,
@@ -824,23 +820,23 @@ export const createRunTerminalCmd = (context: ToolContext) => {
             });
 
             if (!recovery.ok) return recovery.response;
-            return await (isE2BSandbox(recovery.sandbox) && !is_background
-              ? withE2BSandboxLeaseHeartbeat(recovery.sandbox, () =>
+            return await (isCloudSandbox(recovery.sandbox) && !is_background
+              ? withSandboxLeaseHeartbeat(recovery.sandbox, () =>
                   executeWithLocalRelayRecovery(recovery.sandbox),
                 )
               : executeWithLocalRelayRecovery(recovery.sandbox));
           }
         }
 
-        return await (isE2BSandbox(sandbox) && !is_background
-          ? withE2BSandboxLeaseHeartbeat(sandbox, () =>
+        return await (isCloudSandbox(sandbox) && !is_background
+          ? withSandboxLeaseHeartbeat(sandbox, () =>
               executeWithLocalRelayRecovery(sandbox),
             )
           : executeWithLocalRelayRecovery(sandbox));
 
         async function executeCommand(sandboxInstance: typeof sandbox) {
           const agentBrowserEnv =
-            isE2BSandbox(sandboxInstance) ||
+            isCloudSandbox(sandboxInstance) ||
             (await context.browserSessions?.hasConnectedChallengeScope?.())
               ? await prepareBrowserEnv(sandboxInstance, command)
               : undefined;
@@ -1084,7 +1080,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                   const resumableSession = commandSession?.sessionId;
                   if (resumableSession) commandSessionExposed = true;
                   resumableTimeoutObserved = Boolean(resumableSession);
-                  const resourceFailureObservation = isE2BSandbox(
+                  const resourceFailureObservation = isCloudSandbox(
                     sandboxInstance,
                   )
                     ? observeSandboxResourceFailure(
@@ -1216,7 +1212,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                     cancelCentrifugoCommand = cancel;
                   },
                 }
-              : isE2BSandbox(sandboxInstance)
+              : isCloudSandbox(sandboxInstance)
                 ? {
                     ...commonOptions,
                     signal: abortSignal,
@@ -1262,7 +1258,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
             const effectiveCommand = augmentCommandPath(
               withBrowserGatePath(
                 context.browserSessions &&
-                  isE2BSandbox(sandboxInstance) &&
+                  isCloudSandbox(sandboxInstance) &&
                   detectAgentBrowserUsage(command)
                   ? `umask 077; unset AGENT_BROWSER_SESSION_NAME AGENT_BROWSER_PROFILE AGENT_BROWSER_STATE; ${command}`
                   : command,
@@ -1316,8 +1312,8 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                 }, retryOptions);
               }
 
-              if (isE2BSandbox(sandboxInstance)) {
-                // E2B's foreground `run()` only returns after exit, so it
+              if (isCloudSandbox(sandboxInstance)) {
+                // The cloud sandbox foreground `run()` only returns after exit, so it
                 // cannot provide identity while a command is still running.
                 // Start it through the SDK's background handle, retain that
                 // exact handle/PID for lifecycle operations, then wait here
@@ -1329,7 +1325,7 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                       background: true,
                     }),
                   retryOptions,
-                )) as unknown as E2BCommandHandle;
+                )) as unknown as CloudCommandHandle;
                 execution = started;
                 processId = started.pid;
                 commandHandle?.setPid(started.pid);
@@ -1356,7 +1352,10 @@ export const createRunTerminalCmd = (context: ToolContext) => {
                   commandHandle?.setPid(exec.pid);
                 }
                 commandHandle?.resolveExit(exec.exitCode ?? 0);
-                if (resumableTimeoutObserved && isE2BSandbox(sandboxInstance)) {
+                if (
+                  resumableTimeoutObserved &&
+                  isCloudSandbox(sandboxInstance)
+                ) {
                   observeTerminalTimeoutRecovery(
                     context.onSandboxResourceMetrics,
                     (exec.exitCode ?? 0) === 0
@@ -1446,7 +1445,10 @@ export const createRunTerminalCmd = (context: ToolContext) => {
               })
               .catch(async (error) => {
                 abortSignal?.removeEventListener("abort", onAbort);
-                if (resumableTimeoutObserved && isE2BSandbox(sandboxInstance)) {
+                if (
+                  resumableTimeoutObserved &&
+                  isCloudSandbox(sandboxInstance)
+                ) {
                   observeTerminalTimeoutRecovery(
                     context.onSandboxResourceMetrics,
                     error instanceof CommandExitError

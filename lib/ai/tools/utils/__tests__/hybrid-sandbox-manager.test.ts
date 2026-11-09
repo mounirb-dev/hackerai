@@ -1,31 +1,17 @@
-jest.mock("@/lib/cloud-recovery/store", () => ({
-  readFailures: jest.fn(async () => null),
-  clearResumeFailures: jest.fn(async () => {}),
-}));
 jest.mock("@/lib/centrifugo/jwt", () => ({
   generateCentrifugoToken: jest.fn(async () => "test-token"),
 }));
-jest.mock("../cloud-workspace-guard", () => ({
-  ...jest.requireActual("../cloud-workspace-guard"),
-  readCloudWorkspaceState: jest.fn(async () => null),
-}));
-import { readCloudWorkspaceState } from "../cloud-workspace-guard";
 import { WINDOWS_COMMAND_SHELL_GUIDANCE } from "@/lib/ai/windows-guidance";
 import { CentrifugoSandbox } from "../centrifugo-sandbox";
-jest.mock("@e2b/code-interpreter", () => ({
-  Sandbox: class MockSandbox {
-    static list = jest.fn();
-    static getInfo = jest.fn();
-    static connect = jest.fn();
-  },
+jest.mock("@/lib/sandbox/docker", () => ({
+  Sandbox: class MockSandbox {},
+  ensureUserSandbox: jest.fn(),
 }));
 
-import { Sandbox } from "@e2b/code-interpreter";
+import { Sandbox, ensureUserSandbox } from "@/lib/sandbox/docker";
 
-const sandboxApi = Sandbox as unknown as {
-  list: jest.Mock;
-  getInfo: jest.Mock;
-  connect: jest.Mock;
+const sandboxApi = {
+  ensure: ensureUserSandbox as unknown as jest.Mock,
 };
 const mockConvexQuery = jest.fn();
 const mockConvexMutation = jest.fn();
@@ -174,7 +160,7 @@ describe("stable environment acquisition", () => {
         });
         expect(setSandbox).not.toHaveBeenCalled();
         expect(close).toHaveBeenCalledTimes(1);
-        expect(sandboxApi.connect).not.toHaveBeenCalled();
+        expect(sandboxApi.ensure).not.toHaveBeenCalled();
 
         dispatch.mockResolvedValue({
           type: "file_stat_result",
@@ -1169,13 +1155,12 @@ describe("HybridSandboxManager prompt-time fallback", () => {
 
 describe("HybridSandboxManager reset cleanup", () => {
   beforeEach(() => {
-    sandboxApi.list.mockReset();
-    sandboxApi.connect.mockReset();
+    sandboxApi.ensure.mockReset();
     mockConvexQuery.mockReset();
     mockConvexMutation.mockReset();
   });
 
-  it("returns a cached E2B sandbox after a transient lease refresh failure", async () => {
+  it("returns a cached cloud sandbox after a transient lease refresh failure", async () => {
     const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const manager = new HybridSandboxManager(
@@ -1188,6 +1173,7 @@ describe("HybridSandboxManager reset cleanup", () => {
       );
       const sandbox = Object.assign(new Sandbox(), {
         sandboxId: "sandbox-1",
+        isRunning: jest.fn(async () => true),
         setTimeout: jest.fn(async () => {
           throw new Error("temporary refresh failure");
         }),
@@ -1203,6 +1189,33 @@ describe("HybridSandboxManager reset cleanup", () => {
     }
   });
 
+  it("reacquires a cached cloud sandbox whose container stopped", async () => {
+    const manager = new HybridSandboxManager(
+      "user-1",
+      jest.fn(),
+      "e2b",
+      "service-key",
+      null,
+      "pro",
+    );
+    const stopped = Object.assign(new Sandbox(), {
+      sandboxId: "sandbox-1",
+      isRunning: jest.fn(async () => false),
+    });
+    const restarted = Object.assign(new Sandbox(), {
+      sandboxId: "sandbox-1",
+      isRunning: jest.fn(async () => true),
+      setTimeout: jest.fn(async () => {}),
+    });
+    sandboxApi.ensure.mockResolvedValue({ sandbox: restarted, created: false });
+
+    manager.setSandbox(stopped as any);
+    const result = await manager.getSandbox();
+
+    expect(result.sandbox).toBe(restarted);
+    expect(sandboxApi.ensure).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a cloud fallback pinned when the preferred desktop reconnects", async () => {
     const manager = new HybridSandboxManager(
       "user-1",
@@ -1214,6 +1227,7 @@ describe("HybridSandboxManager reset cleanup", () => {
     );
     const sandbox = Object.assign(new Sandbox(), {
       sandboxId: "sandbox-1",
+      isRunning: jest.fn(async () => true),
       setTimeout: jest.fn(async () => {}),
     });
     manager.setSandbox(sandbox as any);
@@ -1292,7 +1306,7 @@ describe("HybridSandboxManager reset cleanup", () => {
         queryCallsBeforeStrictRetry,
       );
       expect(setSandbox).not.toHaveBeenCalled();
-      expect(sandboxApi.list).not.toHaveBeenCalled();
+      expect(sandboxApi.ensure).not.toHaveBeenCalled();
 
       const quarantineLog = JSON.parse(
         String(
@@ -1495,7 +1509,7 @@ describe("HybridSandboxManager reset cleanup", () => {
       await expect(manager.getSandbox()).rejects.toThrow(
         "selected local sandbox stopped responding",
       );
-      expect(sandboxApi.list).not.toHaveBeenCalled();
+      expect(sandboxApi.ensure).not.toHaveBeenCalled();
     } finally {
       warnSpy.mockRestore();
     }
@@ -1593,9 +1607,7 @@ describe("HybridSandboxManager reset cleanup", () => {
     }
   });
 
-  it("forgets an E2B connection without killing the shared user sandbox", async () => {
-    const originalProvider = process.env.CLOUD_SANDBOX_PROVIDER;
-    process.env.CLOUD_SANDBOX_PROVIDER = "e2b";
+  it("forgets a cloud connection without killing the user's sandbox", async () => {
     const manager = new HybridSandboxManager(
       "user-1",
       jest.fn(),
@@ -1609,56 +1621,19 @@ describe("HybridSandboxManager reset cleanup", () => {
     };
     const replacement = Object.assign(new Sandbox(), {
       sandboxId: "sandbox-2",
-      getInfo: jest.fn(async () => ({
-        metadata: { userID: "user-1" },
-        network: { allowOut: [], denyOut: [] },
-      })),
     });
-    sandboxApi.list.mockReturnValue({
-      nextItems: jest.fn(async () => [
-        {
-          sandboxId: "sandbox-2",
-          state: "running",
-          metadata: { sandboxVersion: "v12" },
-        },
-      ]),
+    sandboxApi.ensure.mockResolvedValue({
+      sandbox: replacement,
+      created: false,
     });
-    jest.mocked(readCloudWorkspaceState).mockResolvedValue({
-      version: 1,
-      phase: "e2b",
-      token: "fixture",
-      sourceId: "sandbox-2",
-      destinationId: "sandbox-2",
-      region: "us-east-1",
-      origin: "adopted",
-    });
-    sandboxApi.getInfo.mockResolvedValue({
-      sandboxId: "sandbox-2",
-      state: "running",
-      metadata: {
-        userID: "user-1",
-        template: "terminal-agent-sandbox",
-        sandboxVersion: "v12",
-        e2bCluster: "us",
-      },
-    });
-    sandboxApi.connect.mockResolvedValue(replacement);
 
-    try {
-      manager.setSandbox(sandbox as any);
-      await manager.resetSandbox("test");
-      const reacquired = await manager.getSandbox();
+    manager.setSandbox(sandbox as any);
+    await manager.resetSandbox("test");
+    const reacquired = await manager.getSandbox();
 
-      expect(sandbox.kill).not.toHaveBeenCalled();
-      expect(reacquired.sandbox).toBe(replacement);
-      expect(reacquired.sandbox).not.toBe(sandbox);
-    } finally {
-      if (originalProvider === undefined) {
-        delete process.env.CLOUD_SANDBOX_PROVIDER;
-      } else {
-        process.env.CLOUD_SANDBOX_PROVIDER = originalProvider;
-      }
-    }
+    expect(sandbox.kill).not.toHaveBeenCalled();
+    expect(reacquired.sandbox).toBe(replacement);
+    expect(reacquired.sandbox).not.toBe(sandbox);
   });
 });
 

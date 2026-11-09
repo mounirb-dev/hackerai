@@ -5,11 +5,11 @@ import {
   getActiveBrowserSessionName,
   resizeBrowserViewport,
 } from "../server";
-import { CommandExitError, TimeoutError } from "@e2b/code-interpreter";
-import type { Sandbox } from "@e2b/code-interpreter";
+import { CommandExitError, TimeoutError } from "@/lib/sandbox/docker";
+import type { Sandbox } from "@/lib/sandbox/docker";
 
 jest.mock("server-only", () => ({}));
-jest.mock("@e2b/code-interpreter", () => ({
+jest.mock("@/lib/sandbox/docker", () => ({
   Sandbox: {},
   CommandExitError: class extends Error {
     constructor(
@@ -19,9 +19,7 @@ jest.mock("@e2b/code-interpreter", () => ({
     }
   },
   TimeoutError: class extends Error {},
-}));
-jest.mock("@/lib/ai/tools/utils/e2b-cluster", () => ({
-  getE2BClusterRouting: jest.fn(),
+  connectSandbox: jest.fn(),
 }));
 jest.mock("@/lib/ai/tools/utils/sandbox-command-options", () => ({
   buildSandboxCommandOptions: () => ({ user: "root" }),

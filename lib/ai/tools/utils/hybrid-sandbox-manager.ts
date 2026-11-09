@@ -1,7 +1,6 @@
 import { DesktopFileBridgeError } from "@/lib/centrifugo/desktop-file-errors";
 import { CONNECTED_AGENT_BROWSER_GUIDANCE } from "@/lib/ai/browser-guidance";
 import { WINDOWS_COMMAND_SHELL_GUIDANCE } from "@/lib/ai/windows-guidance";
-import { getE2BSandboxVersion } from "./e2b-sandbox-version";
 import { ChatSDKError } from "@/lib/errors";
 import {
   Centrifuge,
@@ -25,15 +24,10 @@ import {
 import {
   getCloudSandboxProviderForInstance,
   isCentrifugoSandbox,
-  isE2BSandbox,
+  isCloudSandbox,
   type ConnectionInfo,
 } from "./sandbox-types";
-import { refreshE2BSandboxLeaseBestEffort } from "./sandbox";
-import {
-  assertCloudWorkspaceAvailable,
-  registerE2BWorkspaceLease,
-  CloudWorkspaceUnavailableError,
-} from "./cloud-workspace-guard";
+import { refreshSandboxLeaseBestEffort } from "./sandbox";
 import { getConvexClient } from "@/lib/db/convex-client";
 import { api } from "@/convex/_generated/api";
 import { SANDBOX_ENVIRONMENT_TOOLS } from "./sandbox-tools";
@@ -72,7 +66,7 @@ import {
 
 type SandboxInstance = AnySandbox;
 
-// "e2b" for cloud sandbox, "desktop" for Tauri desktop app, or a connectionId UUID for a specific local connection.
+// "e2b" (legacy token) for cloud sandbox, "desktop" for Tauri desktop app, or a connectionId UUID for a specific local connection.
 // Uses `string & {}` to preserve autocomplete for well-known values while allowing arbitrary strings.
 export type SandboxPreference = "e2b" | "desktop" | (string & {});
 
@@ -94,7 +88,7 @@ export interface SandboxFallbackInfo {
  * - Dangerous mode (no Docker) with OS context for AI
  */
 // Match DefaultSandboxManager: stop retries in this Agent run after the
-// initial readiness check and one reconnect both fail. E2B reset remains
+// initial readiness check and one reconnect both fail. Cloud reset remains
 // connection-only and never kills the shared per-user sandbox.
 const MAX_SANDBOX_HEALTH_FAILURES = 2;
 export { LOCAL_SANDBOX_PRESENCE_GRACE_MS };
@@ -377,19 +371,17 @@ export class HybridSandboxManager implements SandboxManager {
     private cloudSandboxContext?: CloudSandboxAcquisitionContext,
   ) {
     this.sandbox = initialSandbox || null;
-    if (this.sandbox && isE2BSandbox(this.sandbox))
-      registerE2BWorkspaceLease(this.sandbox, userID);
     this.activeCloudProvider =
       getCloudSandboxProviderForInstance(this.sandbox) ??
       cloudSandboxContext?.provider ??
-      "e2b";
+      "docker";
   }
 
   recordHealthFailure(): boolean {
     this.healthFailureCount++;
     if (this.healthFailureCount >= MAX_SANDBOX_HEALTH_FAILURES) {
       // Mark as unavailable regardless of sandbox type.
-      // Don't auto-fallback from local to E2B — the user explicitly chose local
+      // Don't auto-fallback from local to cloud — the user explicitly chose local
       // and switching environments mid-conversation loses files, network context,
       // and tools the agent was working with.
       if (this.isLocal) {
@@ -417,7 +409,7 @@ export class HybridSandboxManager implements SandboxManager {
   ): Promise<void> {
     // Upload recovery must remain bound to the computer the user selected.
     // Keep this requirement across resetSandbox() so reacquisition fails before
-    // another local connection or E2B can be instantiated.
+    // another local connection or the cloud sandbox can be instantiated.
     this.requiredConnectionIdAfterQuarantine = connectionId;
     if (this.persistedQuarantinedConnectionIds.has(connectionId)) return;
 
@@ -557,7 +549,7 @@ export class HybridSandboxManager implements SandboxManager {
         ? "desktop"
         : this.currentConnectionId;
     }
-    // If we've initialized a sandbox and it's not local, it's E2B
+    // If we've initialized a sandbox and it's not local, it's the cloud sandbox
     if (this.sandbox && !this.isLocal) {
       return "e2b";
     }
@@ -567,7 +559,7 @@ export class HybridSandboxManager implements SandboxManager {
 
   /**
    * Get OS context for AI when using dangerous mode.
-   * Returns null if using E2B.
+   * Returns null if using the cloud sandbox.
    */
   getOsContext(): string | null {
     if (this.sandbox instanceof CentrifugoSandbox) {
@@ -655,9 +647,6 @@ export class HybridSandboxManager implements SandboxManager {
       return {
         type: "cloud",
         provider: this.activeCloudProvider,
-        sandboxVersion: isE2BSandbox(this.sandbox)
-          ? getE2BSandboxVersion(this.sandbox)
-          : undefined,
       };
     }
     const type: SandboxType = isDesktopPreference(this.sandboxPreference)
@@ -854,7 +843,7 @@ export class HybridSandboxManager implements SandboxManager {
       return this.getCloudSandbox();
     }
 
-    // If preference is E2B, always use E2B (but block for free users)
+    // If preference is cloud, always use the cloud sandbox (but block for free users)
     if (this.sandboxPreference === "e2b") {
       if (this.subscription === "free") {
         throw new Error("Cloud sandbox requires a paid plan.");
@@ -1011,18 +1000,13 @@ export class HybridSandboxManager implements SandboxManager {
     if (this.cloudAcquisition) return this.cloudAcquisition;
     if (!this.isLocal && this.sandbox) {
       let reacquire = false;
-      if (isE2BSandbox(this.sandbox)) {
-        try {
-          await assertCloudWorkspaceAvailable(
-            this.userID,
-            this.sandbox.sandboxId,
-          );
-          await refreshE2BSandboxLeaseBestEffort(this.sandbox, {
+      if (isCloudSandbox(this.sandbox)) {
+        // The container stops itself when its idle lease lapses; reacquire it.
+        reacquire = !(await this.sandbox.isRunning().catch(() => false));
+        if (!reacquire) {
+          await refreshSandboxLeaseBestEffort(this.sandbox, {
             source: "hybrid_manager_cache",
           });
-        } catch (error) {
-          if (!(error instanceof CloudWorkspaceUnavailableError)) throw error;
-          reacquire = true;
         }
       }
       if (!reacquire) return { sandbox: this.sandbox };
@@ -1084,7 +1068,6 @@ export class HybridSandboxManager implements SandboxManager {
 
   setSandbox(sandbox: SandboxInstance): void {
     this.localAcquisitionGeneration++;
-    if (isE2BSandbox(sandbox)) registerE2BWorkspaceLease(sandbox, this.userID);
     this.sandbox = sandbox;
     this.activeCloudProvider =
       getCloudSandboxProviderForInstance(sandbox) ?? this.activeCloudProvider;
@@ -1124,7 +1107,7 @@ export class HybridSandboxManager implements SandboxManager {
       });
       return;
     }
-    // E2B sandboxes are shared per user. Forget this worker's SDK connection
+    // Cloud sandboxes are shared per user. Forget this worker's SDK connection
     // and let the next acquisition reconnect without terminating commands
     // owned by another Agent run.
   }

@@ -1068,7 +1068,6 @@ export const subagentTask = task({
                 permissionMode,
               );
             const {
-              cloudNetworkPrompt,
               sandboxManager,
               tools: unguardedTools,
               cleanupBrowserSessions: cleanupToolBrowsers,
@@ -1369,7 +1368,6 @@ export const subagentTask = task({
                 ),
                 system:
                   systemPrompt +
-                  (await cloudNetworkPrompt()) +
                   getSandboxBrowserGuidance(sandboxManager.getSandboxInfo()),
                 providerOptions: getCacheOptions(activeModelName),
                 messages: conversationMessages,
@@ -1528,7 +1526,6 @@ export const subagentTask = task({
                     ),
                     system:
                       systemPrompt +
-                      (await cloudNetworkPrompt()) +
                       getSandboxBrowserGuidance(
                         sandboxManager.getSandboxInfo(),
                       ),

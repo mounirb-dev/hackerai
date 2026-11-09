@@ -1,9 +1,12 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 
-import { CommandExitError, Sandbox, TimeoutError } from "@e2b/code-interpreter";
-import type { TriggerRunRegion } from "@/lib/api/trigger-region";
-import { getE2BClusterRouting } from "@/lib/ai/tools/utils/e2b-cluster";
+import {
+  CommandExitError,
+  connectSandbox,
+  Sandbox,
+  TimeoutError,
+} from "@/lib/sandbox/docker";
 import { browserSessionCommand } from "@/lib/ai/tools/utils/browser-session-program";
 import { buildSandboxCommandOptions } from "@/lib/ai/tools/utils/sandbox-command-options";
 import { checkpointCloudErrorContext } from "@/lib/ai/tools/utils/persistence-failure";
@@ -107,36 +110,21 @@ const SESSION_NAME_RE = /^[^/\u0000\r\n]{1,80}$/;
 
 /** Connect only to the exact running, user-owned cloud workspace. */
 export async function connectBrowserSandbox(session: BrowserSessionLocation) {
-  const region = session.triggerRegion as TriggerRunRegion | null;
-  const cluster = getE2BClusterRouting(region ?? undefined).createCluster;
-  const options = cluster.connectionOptions ?? {};
-  let info: Awaited<ReturnType<typeof Sandbox.getInfo>>;
+  let sandbox: Sandbox;
   try {
-    info = await Sandbox.getInfo(session.sandboxId, {
-      ...options,
-      requestTimeoutMs: 8_000,
-    });
+    sandbox = await connectSandbox(session.sandboxId);
   } catch {
     console.warn("[browser-preview] sandbox lookup unavailable");
     throw new BrowserPreviewUnavailable("disconnected");
   }
   if (
-    info.state !== "running" ||
-    info.metadata?.userID !== session.userId ||
-    // Older reusable sandboxes predate cluster metadata. The selected E2B
-    // account and endpoint still bind discovery to the intended region.
-    (info.metadata?.e2bCluster != null &&
-      info.metadata.e2bCluster !== cluster.cluster) ||
-    info.metadata?.template !== cluster.template
+    sandbox.metadata.userId !== session.userId ||
+    !(await sandbox.isRunning().catch(() => false))
   ) {
     console.warn("[browser-preview] sandbox identity mismatch");
     throw new BrowserPreviewUnavailable("disconnected");
   }
-  return Sandbox.connect(session.sandboxId, {
-    ...options,
-    timeoutMs: 60_000,
-    requestTimeoutMs: 8_000,
-  });
+  return sandbox;
 }
 
 /** Keep SDK read failures as loading; expose only bounded diagnostics to the owning GET. */
@@ -247,7 +235,7 @@ export async function startBrowserRelay(
     relayPort > 65535
   )
     throw new BrowserPreviewUnavailable("disconnected");
-  return `https://${sandbox.getHost(relayPort)}`;
+  return `https://${await sandbox.getHost(relayPort)}`;
 }
 
 export async function renewBrowserRelay(

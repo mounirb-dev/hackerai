@@ -1,5 +1,8 @@
 import { createRetryLogger } from "@/lib/posthog/worker";
-import { isE2BPermanentError, isE2BRateLimitError } from "./e2b-errors";
+import {
+  isSandboxPermanentError,
+  isSandboxRateLimitError,
+} from "./sandbox-errors";
 
 /** Logger used for retry/abort events; uses framework-agnostic logger (no @axiomhq/nextjs). */
 const retryLogger = createRetryLogger("retry-with-backoff");
@@ -23,12 +26,12 @@ export interface RetryOptions {
 }
 
 /**
- * Default function to check if error is permanent using E2B's typed error hierarchy.
+ * Default function to check if error is permanent using the sandbox SDK's typed error hierarchy.
  * Covers: AuthenticationError, TemplateError, InvalidArgumentError, NotFoundError,
  * CommandExitError, and string-based fallbacks for "not running anymore" / "Sandbox not found".
  */
 function defaultIsPermanentError(error: unknown): boolean {
-  return isE2BPermanentError(error);
+  return isSandboxPermanentError(error);
 }
 
 /**
@@ -103,7 +106,7 @@ export async function retryWithBackoff<T>(
 
       // Calculate exponential backoff with jitter
       // Rate limit errors get 5x longer backoff to let the limiter recover
-      const rateLimitMultiplier = isE2BRateLimitError(error) ? 5 : 1;
+      const rateLimitMultiplier = isSandboxRateLimitError(error) ? 5 : 1;
       const baseDelay =
         baseDelayMs * Math.pow(2, attempt) * rateLimitMultiplier;
       const jitter = Math.random() * (jitterMs * 2) - jitterMs;

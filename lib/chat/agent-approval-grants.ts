@@ -354,7 +354,7 @@ export const deriveAgentApprovalTargetGrant = (
     request.operation === "file_edit"
   ) {
     // Reusable file grants cannot be bound to a canonical filesystem object
-    // across E2B, Local, and Desktop backends. Require a fresh approval for
+    // across cloud, Local, and Desktop backends. Require a fresh approval for
     // every mutation instead of treating lexical path equality as authority.
     return null;
   }

@@ -1,4 +1,4 @@
-import type { PtyHandle } from "./e2b-pty-adapter";
+import type { PtyHandle } from "./sandbox-pty-adapter";
 import { createResolvableExited } from "./pty-exited-promise";
 
 /**

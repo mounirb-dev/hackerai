@@ -22,7 +22,7 @@ counts exclude sandbox acquisition failures and cancelled staging attempts.
 
 ## Command readiness and reconnect
 
-E2B batches first run a five-second command readiness probe. A failed probe
+Docker sandbox batches first run a five-second command readiness probe. A failed probe
 prevents every attachment from independently retrying against an unavailable
 command channel. Recovery permits one reconnect and one new readiness probe;
 it does not destroy or replace the workspace. `sandbox_attachment_reconnect`
@@ -30,7 +30,7 @@ records `same_sandbox` so reconnecting a client cannot be mistaken for a new VM.
 `upload_retried_after_reconnect` replaces the misleading fresh-sandbox field.
 
 `sandbox_attachment_failure_diagnostics` distinguishes `readiness` from
-`transfer` and records allowlisted E2B CPU, memory and disk metrics when the
+`transfer` and records allowlisted Docker sandbox CPU, memory and disk metrics when the
 control plane responds within one second. `metrics_status=unavailable` is
 inconclusive; missing metrics must never replace the original error. Metrics
 are sampled on failure and may lag the actual command failure.
@@ -41,7 +41,7 @@ invalid receipt. An unobserved exit with a `not_found` cleanup receipt does not
 prove successful execution. Preserve the failed result; never replay while
 cleanup is unconfirmed.
 
-E2B can acknowledge a successful process exit before its event stream closes.
+Docker sandbox can acknowledge a successful process exit before its event stream closes.
 If waiting for that stream subsequently fails, use the acknowledged exit and
 collected output rather than replaying the completed command. An abort remains
 authoritative. A missing exit or a nonzero exit remains a failure; this recovery
@@ -61,7 +61,7 @@ proof of a DNS configuration problem. Windows fallback verifies PowerShell
 on the selected computer, including its system-directory executable, before
 staging a transfer script.
 
-## E2B write probes
+## Docker sandbox write probes
 
 Only write failures eligible for path fallback trigger diagnostics. At most
 three probes run per staging attempt. Each uses the same default command user
@@ -90,13 +90,13 @@ Likewise, a writable directory does not prove an existing target can be replaced
   Use reserved staging directories rather than altering existing user files.
 - Low free bytes/inodes or `disk_full`/`quota_exceeded` requires capacity work or
   cleanup restricted to disposable staging artifacts.
-- `filesystem_read_only=true` or `write_probe_result=read_only` supports an E2B
+- `filesystem_read_only=true` or `write_probe_result=read_only` supports an Docker sandbox
   filesystem investigation using operational sandbox IDs and run timestamps.
-- Probe unavailability is inconclusive. Correlate the original error, E2B
+- Probe unavailability is inconclusive. Correlate the original error, Docker sandbox
   acquisition/resume evidence, and surrounding command failures before blaming
   the provider or changing sandbox state.
 
-Validate in the authorized Preview environment with a disposable E2B sandbox:
+Validate in the authorized Preview environment with a disposable Docker sandbox sandbox:
 normal upload; existing non-writable target with writable parent; unavailable
 upload directory; cancellation during staging. Expect normal completion or the
 existing actionable failure, correct rewritten attachment references, and

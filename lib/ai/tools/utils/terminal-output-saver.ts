@@ -68,10 +68,10 @@ const getPersistenceSandboxFields = (
   provider: TerminalOutputPersistenceProvider,
 ): {
   sandbox_type: "cloud" | "desktop" | "remote-connection";
-  sandbox_provider?: "e2b";
+  sandbox_provider?: "docker";
 } => {
   if (provider === "e2b") {
-    return { sandbox_type: "cloud", sandbox_provider: provider };
+    return { sandbox_type: "cloud", sandbox_provider: "docker" };
   }
   return {
     sandbox_type: provider === "desktop" ? "desktop" : "remote-connection",

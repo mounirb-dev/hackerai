@@ -55,7 +55,7 @@ The owning performance work is HAC-151; evaluate browser overhead and acquisitio
 success after rollout before changing sampling or deadline policy.
 
 Cloud acquisition uses one 30-second active-wait budget across provider retries
-and consecutive failed attempts in a manager. E2B receives the shared abort
+and consecutive failed attempts in a manager. Docker sandbox receives the shared abort
 signal for discovery, lookup, connect and create; the signal cancels supported
 SDK requests. The outer deadline also bounds adapters that cannot abort. Late
 results are fenced before publishing/caching a connection. A timeout does not

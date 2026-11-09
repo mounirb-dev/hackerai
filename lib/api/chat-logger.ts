@@ -2170,8 +2170,7 @@ export function captureUsageCost({
         sandbox_cost_accounting_version: 2,
         sandbox_cost_source: "request_runtime_rate",
         sandbox_cost_dollars: sandboxUsage.totalCostDollars,
-        sandbox_e2b_runtime_ms: sandboxUsage.e2bRuntimeMs,
-        sandbox_e2b_cost_dollars: sandboxUsage.e2bCostDollars,
+        sandbox_runtime_ms: sandboxUsage.sandboxRuntimeMs,
       }),
       ...(triggerRunUsage && {
         trigger_run_cost_accounting_version: 1,

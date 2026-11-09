@@ -112,14 +112,11 @@ pnpm test:e2e:users:delete
 pnpm test:e2e:users:reset-passwords
 ```
 
-### E2B Sandbox Management
+### Sandbox Image
 
 ```bash
-# Build development E2B sandbox
-pnpm e2b:build:dev
-
-# Build production E2B sandbox
-pnpm e2b:build:prod
+# Build the Docker sandbox image locally
+pnpm docker:build
 ```
 
 ### S3 Security Validation

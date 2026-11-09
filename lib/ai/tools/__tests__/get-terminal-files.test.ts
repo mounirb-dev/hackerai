@@ -56,7 +56,7 @@ function makeContext(overrides: Partial<ToolContext> = {}): ToolContext {
     mode: "agent",
     modelName: "model-grok-4.6",
     subscription: "pro",
-    isE2BSandbox: (() => true) as never,
+    isCloudSandbox: (() => true) as never,
     ...overrides,
   } as ToolContext;
 }

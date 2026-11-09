@@ -1,6 +1,6 @@
 // Executed inside the existing cloud sandbox. The stream WebSocket is bound to
 // localhost there; only a single validated frame or input batch crosses the
-// authenticated E2B command connection. Never send this port to a client.
+// authenticated cloud sandbox command connection. Never send this port to a client.
 export const BROWSER_BRIDGE_PROGRAM = String.raw`
 const port = Number(process.argv[1]);
 const mode = process.argv[2];

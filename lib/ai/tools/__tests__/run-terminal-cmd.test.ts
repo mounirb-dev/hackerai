@@ -16,7 +16,7 @@
 // Stub out @e2b/code-interpreter — its ESM `chalk` dependency trips Jest's
 // default transformer. We only need the named exports that appear in
 // `run-terminal-cmd.ts` to be importable.
-jest.mock("@e2b/code-interpreter", () => {
+jest.mock("@/lib/sandbox/docker", () => {
   class MockE2BError extends Error {}
   return {
     AuthenticationError: class AuthenticationError extends MockE2BError {},
@@ -53,7 +53,7 @@ jest.mock("../utils/sandbox-file-uploader", () => ({
 }));
 
 import { phLogger } from "@/lib/posthog/server";
-import { InvalidArgumentError } from "@e2b/code-interpreter";
+import { InvalidArgumentError } from "@/lib/sandbox/docker";
 import { convertToModelMessages, type UIMessage } from "ai";
 import { createRunTerminalCmd } from "../run-terminal-cmd";
 import { createGetTerminalFiles } from "../get-terminal-files";
@@ -62,7 +62,7 @@ import { createInteractTerminalSession } from "../interact-terminal-session";
 import { spawn } from "node:child_process";
 import { setImmediate } from "node:timers";
 import { detectAgentBrowserUsage } from "../utils/agent-browser-usage";
-import type { PtyHandle } from "../utils/e2b-pty-adapter";
+import type { PtyHandle } from "../utils/sandbox-pty-adapter";
 import {
   PtySessionManager,
   MAX_CONCURRENT_PTYS_PER_CHAT,
@@ -73,18 +73,18 @@ import {
 } from "../utils/local-sandbox-errors";
 
 // ── Mock hybrid-sandbox-manager so we can return a fake sandbox ──────
-jest.mock("../utils/e2b-pty-adapter", () => {
-  const actual = jest.requireActual("../utils/e2b-pty-adapter");
+jest.mock("../utils/sandbox-pty-adapter", () => {
+  const actual = jest.requireActual("../utils/sandbox-pty-adapter");
   return {
     ...actual,
     // Overridden per test by assigning to `mockCreateHandle`
-    createE2BPtyHandle: jest.fn(),
+    createSandboxPtyHandle: jest.fn(),
   };
 });
 
-import { createE2BPtyHandle } from "../utils/e2b-pty-adapter";
-const mockCreateE2BPtyHandle = createE2BPtyHandle as jest.MockedFunction<
-  typeof createE2BPtyHandle
+import { createSandboxPtyHandle } from "../utils/sandbox-pty-adapter";
+const mockCreateE2BPtyHandle = createSandboxPtyHandle as jest.MockedFunction<
+  typeof createSandboxPtyHandle
 >;
 
 jest.mock("../utils/centrifugo-pty-adapter", () => ({
@@ -140,7 +140,7 @@ function makeFakeHandle(pid = 4242): FakeHandle {
   return handle;
 }
 
-// ── Fake sandbox that passes isE2BSandbox (has `jupyterUrl`) ─────────
+// ── Fake sandbox that passes isCloudSandbox (has `jupyterUrl`) ─────────
 
 function makeFakeE2BSandbox() {
   return {
@@ -195,7 +195,7 @@ function makeContext(opts: {
 
   const ptySessionManager = opts.ptySessionManager ?? new PtySessionManager();
 
-  // Match the real `isE2BSandbox` discriminator from sandbox-types.ts:
+  // Match the real `isCloudSandbox` discriminator from sandbox-types.ts:
   //   - reject if sandboxKind === "centrifugo" (Centrifugo mock)
   //   - accept only if `jupyterUrl` (string) OR `pty` (object) is present
   //   - reject partial mocks lacking both (treated as non-E2B)
@@ -219,7 +219,7 @@ function makeContext(opts: {
     requestToolApproval: opts.requestToolApproval,
     autoReviewEvidenceEnabled: opts.autoReviewEvidenceEnabled,
     onSandboxResourceMetrics: opts.onSandboxResourceMetrics,
-    isE2BSandbox: (s: unknown) => {
+    isCloudSandbox: (s: unknown) => {
       if (!s || typeof s !== "object") return false;
       if ((s as { sandboxKind?: unknown }).sandboxKind === "centrifugo")
         return false;
@@ -1729,7 +1729,7 @@ describe("run_terminal_cmd — PTY action dispatch", () => {
 
   test("regression: legacy schema {command, brief, is_background, timeout} still works", async () => {
     // Use a non-E2B sandbox (sandboxKind !== "centrifugo" is NOT enough after
-    // the isE2BSandbox hardening — a sandbox with sandboxKind: "centrifugo" is
+    // the isCloudSandbox hardening — a sandbox with sandboxKind: "centrifugo" is
     // explicitly non-E2B and bypasses the E2B health check entirely).
     const nonE2B = {
       sandboxKind: "centrifugo" as const,

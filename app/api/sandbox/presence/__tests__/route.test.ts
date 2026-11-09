@@ -51,7 +51,7 @@ jest.mock("centrifuge", () => ({
 jest.mock("@/lib/db/convex-client", () => ({
   getConvexClient: () => ({ query: mockQuery, mutation: mockMutation }),
 }));
-jest.mock("@e2b/code-interpreter", () => ({ Sandbox: class {} }));
+jest.mock("@/lib/sandbox/docker", () => ({ Sandbox: class {} }));
 import { HybridSandboxManager } from "@/lib/ai/tools/utils/hybrid-sandbox-manager";
 import { GET } from "../route";
 

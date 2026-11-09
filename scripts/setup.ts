@@ -94,22 +94,16 @@ async function getS3Config(): Promise<{
   };
 }
 
-async function getE2bApiKey(): Promise<string> {
-  console.log(`\n${chalk.bold("Getting E2B API Key for cloud sandbox")}`);
+async function getSandboxImage(): Promise<string> {
+  console.log(`
+${chalk.bold("Cloud sandbox (Docker)")}`);
   console.log(
-    "E2B provides the cloud sandbox environment for agent mode (paid feature, free users use local sandbox)",
+    "Agent mode runs commands in a Docker container per user. Docker must be reachable from the app (DOCKER_HOST or the default socket).",
   );
-  console.log("You can find your E2B API Key at: https://e2b.dev/dashboard");
-  const key = await question("Enter your E2B API Key: ");
-
-  if (key.startsWith("e2b_")) {
-    return key;
-  }
-
-  console.log(chalk.red("Invalid E2B API Key format"));
-  console.log('E2B keys should start with "e2b_"');
-
-  return await getE2bApiKey();
+  const image = await question(
+    "Sandbox image [hackerai/sandbox:latest]: ",
+  );
+  return image.trim() || "hackerai/sandbox:latest";
 }
 
 async function getWorkOSApiKey(): Promise<string> {
@@ -315,9 +309,9 @@ ABLITERATION_API_KEY=
 # CODE EXECUTION - CLOUD SANDBOX (Required for Agent Mode)
 # =============================================================================
 
-# Sign up at: https://e2b.dev/
-E2B_API_KEY=${envVars.E2B_API_KEY}
-E2B_TEMPLATE=terminal-agent-sandbox
+# Docker runs one sandbox container per user. Build the image with
+# "pnpm docker:build" or pull hackerai/sandbox:latest.
+DOCKER_SANDBOX_IMAGE=${envVars.DOCKER_SANDBOX_IMAGE}
 
 # =============================================================================
 # WEB SEARCH & SCRAPING (Optional)
@@ -511,7 +505,7 @@ async function main() {
     AWS_S3_REGION,
     AWS_S3_BUCKET_NAME,
   } = await getS3Config();
-  const E2B_API_KEY = await getE2bApiKey();
+  const DOCKER_SANDBOX_IMAGE = await getSandboxImage();
 
   // Get WorkOS configuration
   const WORKOS_API_KEY = await getWorkOSApiKey();
@@ -538,7 +532,7 @@ async function main() {
     AWS_S3_SECRET_ACCESS_KEY,
     AWS_S3_REGION,
     AWS_S3_BUCKET_NAME,
-    E2B_API_KEY,
+    DOCKER_SANDBOX_IMAGE,
     WORKOS_API_KEY,
     WORKOS_CLIENT_ID,
     WORKOS_AUTH_DOMAIN,

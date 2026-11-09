@@ -1,4 +1,3 @@
-import { createCloudNetworkPrompt } from "@/lib/cloud-network/prompt";
 import { BrowserSessions } from "./utils/browser-sessions";
 import { createBrowserHandoff } from "./browser-handoff";
 import { createBrowserChallengeHandler } from "../captcha/browser-challenge";
@@ -33,7 +32,7 @@ import {
 // the added complexity. The agent should use run_terminal_cmd with rg instead.
 // import { createMatch } from "./match";
 import type { ToolSet, UIMessageStreamWriter } from "ai";
-import type { Sandbox } from "@e2b/code-interpreter";
+import type { Sandbox } from "@/lib/sandbox/docker";
 import type {
   ChatMode,
   ToolContext,
@@ -55,11 +54,10 @@ import { ptySessionManager } from "./utils/pty-session-manager";
 import { createPtyParserLogBudget } from "./utils/pty-output-formatter";
 import {
   getCloudSandboxProviderForInstance,
-  isE2BSandbox,
+  isCloudSandbox,
 } from "./utils/sandbox-types";
 import { getSandboxWithFallbackGuard } from "./utils/sandbox-fallback";
 import { createE2BResourcePressureObserver } from "@/lib/analytics/sandbox-resource-pressure";
-import { E2B_COST_PER_MS } from "./utils/e2b-cost";
 import {
   phLogger,
   getPostHogBooleanFlagDecisionForUser,
@@ -71,12 +69,12 @@ import type {
   CloudSandboxSelectionReason,
 } from "./utils/cloud-sandbox-provider";
 import {
-  releaseE2BSandboxIdleLeaseBestEffort,
-  startE2BSandboxLeaseHeartbeat,
-  type E2BSandboxLeaseHeartbeat,
-} from "./utils/e2b-lease";
+  releaseSandboxIdleLeaseBestEffort,
+  startSandboxLeaseHeartbeat,
+  type SandboxLeaseHeartbeat,
+} from "./utils/sandbox-lease";
 
-export { isE2BSandbox };
+export { isCloudSandbox };
 
 export type CreateToolsRuntimePolicy = {
   signal?: AbortSignal;
@@ -88,19 +86,22 @@ export type CreateToolsRuntimePolicy = {
   cloudSandboxSelectionReason?: CloudSandboxSelectionReason;
   triggerRegion?: TriggerRunRegion;
   environment?: string;
-  keepE2BLeaseAliveForRun?: boolean;
+  keepSandboxLeaseAliveForRun?: boolean;
   browserAgentId?: string;
   onBrowserOwnershipLost?: () => void;
 };
 
 export type SandboxSessionUsage = {
   totalCostDollars: number;
-  e2bRuntimeMs: number;
-  e2bCostDollars: number;
+  sandboxRuntimeMs: number;
+  sandboxCostDollars: number;
 };
 
+// Self-hosted containers carry no per-second provider charge.
+const SANDBOX_COST_PER_MS = 0;
+
 const emptySandboxRuntimeMs = (): Record<CloudSandboxProvider, number> => ({
-  e2b: 0,
+  docker: 0,
 });
 
 // Factory function to create tools with context
@@ -135,8 +136,8 @@ export const createTools = (
   const sandboxAccumulatedRuntimeMs = emptySandboxRuntimeMs();
   let providerSelectionRecorded = false;
   let sandboxBootInfo: SandboxBootInfo | null = null;
-  let lastE2BSandbox: Sandbox | null = null;
-  let runLeaseHeartbeat: E2BSandboxLeaseHeartbeat | null = null;
+  let lastCloudSandbox: Sandbox | null = null;
+  let runLeaseHeartbeat: SandboxLeaseHeartbeat | null = null;
   let currentModelName = modelName;
   let sandboxOperationQueue: Promise<void> = Promise.resolve();
   let pendingSandbox: Promise<AnySandbox> | null = null;
@@ -172,11 +173,11 @@ export const createTools = (
   const trackSandboxUsage = (newSandbox: AnySandbox) => {
     sandbox = newSandbox;
     const provider = getCloudSandboxProviderForInstance(newSandbox);
-    if (isE2BSandbox(newSandbox)) {
-      lastE2BSandbox = newSandbox;
-      if (runtimePolicy.keepE2BLeaseAliveForRun && !runLeaseHeartbeat) {
-        runLeaseHeartbeat = startE2BSandboxLeaseHeartbeat(
-          () => lastE2BSandbox,
+    if (isCloudSandbox(newSandbox)) {
+      lastCloudSandbox = newSandbox;
+      if (runtimePolicy.keepSandboxLeaseAliveForRun && !runLeaseHeartbeat) {
+        runLeaseHeartbeat = startSandboxLeaseHeartbeat(
+          () => lastCloudSandbox,
           "run_heartbeat",
         );
       }
@@ -205,8 +206,8 @@ export const createTools = (
         sandbox_type: "cloud",
         sandbox_provider: provider,
         provider_selection_reason:
-          runtimePolicy.cloudSandboxSelectionReason ?? "e2b_only",
-        cloud_sandbox_transport: "e2b_sdk",
+          runtimePolicy.cloudSandboxSelectionReason ?? "docker_only",
+        cloud_sandbox_transport: "docker_engine_api",
         subscription,
         subscription_tier: subscription,
         agent_run_kind: cloudSandboxContext.runKind,
@@ -214,7 +215,8 @@ export const createTools = (
         sandbox_boot_path: sandboxBootInfo?.path,
         sandbox_acquisition_duration_ms: sandboxBootInfo?.duration_ms,
         sandbox_create_attempts: sandboxBootInfo?.create_attempts,
-        image_version: process.env.E2B_TEMPLATE ?? "terminal-agent-sandbox",
+        image_version:
+          process.env.DOCKER_SANDBOX_IMAGE ?? "hackerai/sandbox:latest",
         cloud_sandbox_provider_event_version: 8,
       });
     }
@@ -237,7 +239,7 @@ export const createTools = (
           trackSandboxUsage,
           sandboxPreference,
           serviceKey,
-          isE2BSandbox(sandbox) ? sandbox : null,
+          isCloudSandbox(sandbox) ? sandbox : null,
           subscription,
           recordSandboxBoot,
           workingDirectory,
@@ -248,7 +250,7 @@ export const createTools = (
       : new DefaultSandboxManager(
           userID,
           trackSandboxUsage,
-          isE2BSandbox(sandbox) ? sandbox : null,
+          isCloudSandbox(sandbox) ? sandbox : null,
           recordSandboxBoot,
           cloudSandboxContext,
         );
@@ -342,7 +344,7 @@ export const createTools = (
     modelName,
     getCurrentModelName: () => currentModelName,
     subscription,
-    isE2BSandbox,
+    isCloudSandbox,
     appendMetadataStream,
     onToolCost,
     onToolFailure,
@@ -510,8 +512,8 @@ export const createTools = (
     if (runtimePolicy.chargeSandboxRuntime === false) {
       return {
         totalCostDollars: 0,
-        e2bRuntimeMs: 0,
-        e2bCostDollars: 0,
+        sandboxRuntimeMs: 0,
+        sandboxCostDollars: 0,
       };
     }
 
@@ -520,11 +522,11 @@ export const createTools = (
       runtimeMs[sandboxCostProvider] +=
         performance.now() - sandboxCostSegmentStartedAt;
     }
-    const e2bCostDollars = runtimeMs.e2b * E2B_COST_PER_MS;
+    const sandboxCostDollars = runtimeMs.docker * SANDBOX_COST_PER_MS;
     return {
-      totalCostDollars: e2bCostDollars,
-      e2bRuntimeMs: runtimeMs.e2b,
-      e2bCostDollars,
+      totalCostDollars: sandboxCostDollars,
+      sandboxRuntimeMs: runtimeMs.docker,
+      sandboxCostDollars,
     };
   };
 
@@ -532,12 +534,12 @@ export const createTools = (
     return (await getSandboxSessionUsage()).totalCostDollars;
   };
 
-  const releaseE2BSandboxIdleLease = async (): Promise<boolean> => {
-    if (!lastE2BSandbox) return false;
-    return releaseE2BSandboxIdleLeaseBestEffort(lastE2BSandbox);
+  const releaseSandboxIdleLease = async (): Promise<boolean> => {
+    if (!lastCloudSandbox) return false;
+    return releaseSandboxIdleLeaseBestEffort(lastCloudSandbox);
   };
 
-  const stopE2BSandboxRunLeaseHeartbeat = async (): Promise<void> => {
+  const stopSandboxRunLeaseHeartbeat = async (): Promise<void> => {
     const heartbeat = runLeaseHeartbeat;
     runLeaseHeartbeat = null;
     await heartbeat?.stop();
@@ -546,11 +548,6 @@ export const createTools = (
   return {
     getCaptchaReceiptPrompt: () =>
       checkBrowserChallenge?.getReceiptPrompt() ?? "",
-    cloudNetworkPrompt: createCloudNetworkPrompt(
-      userID,
-      () =>
-        isAgentMode(mode) && sandboxManager.getEffectivePreference() === "e2b",
-    ),
     tools,
     canRecoverBrowserHandoff: (signal?: AbortSignal) =>
       browserSessions?.canRecoverHumanHandoff(signal ?? runtimePolicy.signal) ??
@@ -570,8 +567,8 @@ export const createTools = (
     sandboxManager,
     getSandboxSessionCost,
     getSandboxSessionUsage,
-    releaseE2BSandboxIdleLease,
-    stopE2BSandboxRunLeaseHeartbeat,
+    releaseSandboxIdleLease,
+    stopSandboxRunLeaseHeartbeat,
     setCurrentModelName,
     getToolsForModel,
   };

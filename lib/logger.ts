@@ -184,7 +184,7 @@ export interface ChatWideEvent {
   sandbox?: {
     type: "cloud" | "desktop" | "remote-connection";
     name?: string;
-    provider?: "e2b";
+    provider?: "docker";
   };
 
   // Sandbox boot timing — fires once per request, only when actual work is done

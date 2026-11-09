@@ -36,12 +36,6 @@ jest.mock("../convex-client", () => {
   const actual = jest.requireActual("../convex-client");
   return { ...actual, getConvexClient: jest.fn(actual.getConvexClient) };
 });
-jest.mock("@/lib/cloud-recovery/service", () => ({
-  recoveryView: jest.fn().mockResolvedValue({ status: "none" }),
-  confirmRecovery: jest.fn(),
-  reopenRecovery: jest.fn(),
-}));
-jest.mock("@/lib/cloud-recovery/store", () => ({ failConsent: jest.fn() }));
 jest.mock("@/lib/ai/browser-handoff/server", () => ({
   BrowserPreviewUnavailable: class extends Error {},
   connectBrowserSandbox: jest.fn().mockResolvedValue({}),
@@ -684,9 +678,8 @@ it("recovers the actual presence route's connection read and returns its result"
   }
 });
 
-describe("read-only browser and recovery GET requests", () => {
+describe("read-only browser GET requests", () => {
   let viewerGet: typeof import("@/app/api/agent/browser/[sessionId]/route").GET;
-  let recoveryGet: typeof import("@/app/api/sandbox/recovery/route").GET;
   let restoreClientUrl: string;
   const savedEnv = {
     url: process.env.NEXT_PUBLIC_CONVEX_URL,
@@ -707,20 +700,6 @@ describe("read-only browser and recovery GET requests", () => {
       call: (request: NextRequest) =>
         viewerGet(request, { params: Promise.resolve({ sessionId }) }),
     },
-    {
-      name: "recovery status",
-      functionName: "userSuspensions:getActiveByUser",
-      value: null,
-      expected: { status: "none" },
-      failureStatus: 409,
-      deniedValue: {
-        category: "policy",
-        source: "manual",
-        source_id: "fixture",
-      },
-      deniedStatus: 403,
-      call: (request: NextRequest) => recoveryGet(request),
-    },
   ];
   beforeAll(async () => {
     const { getConvexUrl } = await import("../convex-client");
@@ -730,7 +709,6 @@ describe("read-only browser and recovery GET requests", () => {
     process.env.VERCEL_ENV = "preview";
     process.env.HACKERAI_ENVIRONMENT = "preview";
     viewerGet = (await import("@/app/api/agent/browser/[sessionId]/route")).GET;
-    recoveryGet = (await import("@/app/api/sandbox/recovery/route")).GET;
   });
   afterAll(async () => {
     const { setConvexUrl } = await import("../convex-client");

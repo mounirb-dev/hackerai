@@ -1,5 +1,5 @@
 import type { AnySandbox } from "@/types";
-import { isE2BSandbox } from "./sandbox-types";
+import { isCloudSandbox } from "./sandbox-types";
 
 export type AttachmentCommandFailureContext = {
   attachment_command_diagnostic_version: 1;
@@ -109,7 +109,7 @@ export async function runAttachmentCommand(
         : sandbox.commands.run(command));
     } catch (error) {
       try {
-        if (isE2BSandbox(sandbox))
+        if (isCloudSandbox(sandbox))
           recordCommandFailure(error, "foreground", false);
       } catch {
         /* Preserve rejection even if optional sandbox detection fails. */
@@ -117,7 +117,7 @@ export async function runAttachmentCommand(
       throw error;
     }
   }
-  if (!isE2BSandbox(sandbox)) {
+  if (!isCloudSandbox(sandbox)) {
     try {
       return await sandbox.commands.run(command, { ...options, signal });
     } catch (error) {
@@ -195,7 +195,7 @@ export async function runAttachmentCommand(
   try {
     return await Promise.race([handle.wait(), aborted]);
   } catch (error) {
-    // E2B records the process end before waiting for the transport's EOF.
+    // The cloud sandbox records the process end before waiting for the transport's EOF.
     // A later stream deadline must not turn an acknowledged successful exit
     // into a failed readiness probe or replay a completed download. Stop still
     // wins, even when it races with the end event.

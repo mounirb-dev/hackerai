@@ -252,7 +252,7 @@ sys.exit(result.returncode)
         path.write_text(wrapper)
         path.chmod(0o700)
         # Bash commands can call the real CLI by absolute path and skip PATH.
-        # Guard each command in the E2B shell, including nested Bash scripts.
+        # Guard each command in the cloud sandbox shell, including nested Bash scripts.
         # The wrapper remains the serialized gate for ordinary CLI calls.
         guard = '''_hackerai_browser_guard() {
   case "$1" in

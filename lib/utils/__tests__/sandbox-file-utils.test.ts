@@ -248,7 +248,7 @@ it.each(["start", "wait"] as const)(
 );
 
 it.each([
-  "E2BAcquisitionError",
+  "SandboxAcquisitionError",
   "CloudWorkspaceUnavailableError",
   "private-error-name",
 ])(

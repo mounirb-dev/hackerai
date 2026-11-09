@@ -1,4 +1,3 @@
-import { CloudWorkspaceRegionChoice } from "./CloudWorkspaceRegionChoice";
 import { BlockedChatBillingRecovery } from "./BlockedChatBillingRecovery";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useAction, useQuery } from "convex/react";
@@ -76,12 +75,6 @@ const getCurrentReturnPath = (): string => {
 
 export const MessageErrorState = (props: MessageErrorStateProps) => {
   const error = deserializeChatSDKErrorFromStream(props.error) ?? props.error;
-  if (
-    error instanceof ChatSDKError &&
-    error.metadata?.cloud_workspace_region_selection_required === true
-  ) {
-    return <CloudWorkspaceRegionChoice onRetry={() => props.onRetry()} />;
-  }
   const isUsageBlock =
     error instanceof ChatSDKError &&
     error.type === "rate_limit" &&

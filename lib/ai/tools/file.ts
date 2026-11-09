@@ -1158,7 +1158,7 @@ async function readSandboxFileForView(
 ): Promise<SandboxViewPayload> {
   if (isCentrifugoSandbox(sandbox) && sandbox.isWindows()) {
     throw new Error(
-      "The view action is not available for Windows local sandboxes yet. Use a Linux/E2B sandbox or inspect the image manually.",
+      "The view action is not available for Windows local sandboxes yet. Use a Linux cloud sandbox or inspect the image manually.",
     );
   }
 
@@ -1179,7 +1179,7 @@ async function readSandboxFileForView(
   try {
     result = await sandbox.commands.run(command, {
       ...buildSandboxCommandOptions(sandbox, undefined, viewEnvVars),
-      // E2B's command API calls this option `envs`; local sandboxes use
+      // The cloud sandbox command API calls this option `envs`; local sandboxes use
       // `envVars`. Provide both so the same binary-safe helper works in both.
       envs: viewEnvVars,
       timeoutMs: 30_000,

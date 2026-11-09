@@ -21,7 +21,7 @@ export function classifySandboxReadinessFailureSignal(
 
   // The acquisition boundary deliberately replaces provider prose with safe
   // copy. Classify its finite diagnostics, not that replacement message.
-  if (error.name === "E2BAcquisitionError" && "diagnostics" in error) {
+  if (error.name === "SandboxAcquisitionError" && "diagnostics" in error) {
     const diagnostics = error.diagnostics;
     if (diagnostics && typeof diagnostics === "object") {
       const fields = diagnostics as Record<string, unknown>;

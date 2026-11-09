@@ -2606,9 +2606,11 @@ describe("agent-long task — Trigger.dev dashboard error visibility", () => {
     const promptIdx = taskSrc.indexOf("systemPrompt(", toolsIdx);
 
     expect(providerIdx).toBeGreaterThan(-1);
-    expect(taskSrc.slice(providerIdx, toolsIdx)).toContain('provider: "e2b"');
     expect(taskSrc.slice(providerIdx, toolsIdx)).toContain(
-      'reason: "e2b_only"',
+      'provider: "docker"',
+    );
+    expect(taskSrc.slice(providerIdx, toolsIdx)).toContain(
+      'reason: "docker_only"',
     );
     expect(toolsIdx).toBeGreaterThan(providerIdx);
     expect(promptIdx).toBeGreaterThan(toolsIdx);
@@ -2669,17 +2671,17 @@ describe("agent-long task — Trigger.dev dashboard error visibility", () => {
     expect(regionIdx).toBeGreaterThan(-1);
     expect(providerIdx).toBeGreaterThan(regionIdx);
     expect(chatHandlerSrc.slice(providerIdx, toolsIdx)).toContain(
-      'provider: "e2b"',
+      'provider: "docker"',
     );
     expect(chatHandlerSrc.slice(toolsIdx, toolsIdx + 1_500)).toContain(
       "triggerRegion: executionRegion",
     );
   });
 
-  test("agent-long releases the E2B idle lease only after active work settles", () => {
-    expect(taskSrc).toContain("keepE2BLeaseAliveForRun: true");
+  test("agent-long releases the sandbox idle lease only after active work settles", () => {
+    expect(taskSrc).toContain("keepSandboxLeaseAliveForRun: true");
     expect(taskSrc).toMatch(
-      /finishE2BIdleLeaseRelease = async \(\) => \{[\s\S]*await stopE2BSandboxRunLeaseHeartbeat\(\);[\s\S]*await releaseE2BSandboxIdleLease\(\);/,
+      /finishE2BIdleLeaseRelease = async \(\) => \{[\s\S]*await stopSandboxRunLeaseHeartbeat\(\);[\s\S]*await releaseSandboxIdleLease\(\);/,
     );
 
     const finalCleanupIdx = taskSrc.lastIndexOf(

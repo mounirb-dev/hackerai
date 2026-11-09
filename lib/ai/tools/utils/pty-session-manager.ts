@@ -15,7 +15,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { PtyHandle } from "./e2b-pty-adapter";
+import type { PtyHandle } from "./sandbox-pty-adapter";
 import { isExpectedAlreadyGoneCleanupError } from "@/lib/utils/cleanup-errors";
 import type { AgentApprovalSandboxIdentity } from "@/types";
 import type { TerminalExecutionRecord } from "./terminal-execution-record";

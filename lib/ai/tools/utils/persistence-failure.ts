@@ -385,7 +385,7 @@ export function checkpointCloudErrorContext(error: unknown): {
   try {
     if (typeof error !== "object" || error === null) kind = "thrown_value";
     else {
-      // E2B 2.x errors expose these as data properties. Do not invoke getters.
+      // Cloud sandbox SDK errors expose these as data properties. Do not invoke getters.
       const name = Object.getOwnPropertyDescriptor(error, "name")?.value;
       switch (name) {
         case "FileNotFoundError":

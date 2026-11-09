@@ -2,7 +2,7 @@
  * Centrifugo PTY adapter.
  *
  * Creates a PtyHandle that communicates with the local runner via Centrifugo
- * pub/sub. Mirrors the interface of e2b-pty-adapter.ts so the interactive
+ * pub/sub. Mirrors the interface of sandbox-pty-adapter.ts so the interactive
  * exec branch in run_terminal_cmd.ts can treat both sandbox types identically.
  *
  * Message flow:
@@ -29,7 +29,7 @@ import {
   CentrifugoMessageReassembler,
   fragmentMatchesCorrelation,
 } from "@/packages/local/src/centrifugo-transport";
-import type { PtyHandle, CreatePtyOptions } from "./e2b-pty-adapter";
+import type { PtyHandle, CreatePtyOptions } from "./sandbox-pty-adapter";
 import type { CentrifugoSandbox } from "./centrifugo-sandbox";
 import { createResolvableExited } from "./pty-exited-promise";
 

@@ -338,7 +338,7 @@ export const createInteractTerminalSession = (context: ToolContext) => {
           );
         }
 
-        // Fast-fail if the PTY already exited — otherwise sendInput on E2B
+        // Fast-fail if the PTY already exited — otherwise sendInput on the cloud sandbox
         // rejects with an opaque `[not_found] process with pid N not found`
         // that doesn't tell the model the session is dead.
         const priorExit = peekSessionExit(session);

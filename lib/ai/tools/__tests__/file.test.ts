@@ -66,7 +66,7 @@ function makeContext(
     mode: "agent",
     modelName: "openai/gpt-5",
     subscription: "pro",
-    isE2BSandbox: (() => true) as never,
+    isCloudSandbox: (() => true) as never,
     ...overrides,
   };
 }

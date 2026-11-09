@@ -60,21 +60,12 @@ Session lifetime and recovery:
 - Do not use \`--session-name\`, \`--profile\`, auth-vault persistence, automatic state saving, or save checkpoints outside the managed directory for idle recovery. If the directory is unavailable, state cannot be restored, or authentication has expired, authenticate again through the user-approved flow. Do not promise recovery across Agent runs.
 </agent_browser>`;
 
-/** Add image-specific guidance only after the actual cloud workspace is known. */
+/**
+ * Image-specific browser guidance. The self-hosted sandbox ships one image, so
+ * there is no per-workspace variant to describe.
+ */
 export function getSandboxBrowserGuidance(
-  info: SandboxInfo | null | undefined,
+  _info: SandboxInfo | null | undefined,
 ): string {
-  if (info?.type !== "cloud" || info.provider !== "e2b") return "";
-  if (info.sandboxVersion === "v13") {
-    return `\n<agent_browser_runtime>
-The attached Cloud workspace is v13 (agent-browser 0.39.3).
-Before reopening immediately after \`close\`, wait for that session's daemon to exit (its socket and PID files disappear); close can return before shutdown finishes. Do not blindly replay an action after an unknown outcome.
-</agent_browser_runtime>\n`;
-  }
-  if (info.sandboxVersion === "v12") {
-    return `\n<agent_browser_runtime>
-The attached Cloud workspace is v12. Use its installed agent-browser version and consult its help for supported syntax. Preserve its files and browser setup; do not upgrade or replace the workspace to use newer browser features.
-</agent_browser_runtime>\n`;
-  }
   return "";
 }

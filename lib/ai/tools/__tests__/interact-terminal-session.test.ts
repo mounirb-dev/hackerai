@@ -14,7 +14,7 @@
 // Stub out @e2b/code-interpreter — its ESM `chalk` dependency trips Jest's
 // default transformer. We only need the named exports that appear in
 // the PTY adapter to be importable.
-jest.mock("@e2b/code-interpreter", () => ({
+jest.mock("@/lib/sandbox/docker", () => ({
   CommandExitError: class CommandExitError extends Error {
     exitCode: number;
     constructor(msg = "exit", exitCode = 1) {
@@ -29,25 +29,25 @@ import { convertToModelMessages, type UIMessage } from "ai";
 import { createInteractTerminalSession } from "../interact-terminal-session";
 import { createRunTerminalCmd } from "../run-terminal-cmd";
 import { createCommandSessionHandle } from "../utils/command-session-handle";
-import type { PtyHandle } from "../utils/e2b-pty-adapter";
+import type { PtyHandle } from "../utils/sandbox-pty-adapter";
 import {
   PtySessionManager,
   MAX_CONCURRENT_PTYS_PER_CHAT,
 } from "../utils/pty-session-manager";
 
 // ── Mock hybrid-sandbox-manager so we can return a fake sandbox ──────
-jest.mock("../utils/e2b-pty-adapter", () => {
-  const actual = jest.requireActual("../utils/e2b-pty-adapter");
+jest.mock("../utils/sandbox-pty-adapter", () => {
+  const actual = jest.requireActual("../utils/sandbox-pty-adapter");
   return {
     ...actual,
     // Overridden per test by assigning to `mockCreateHandle`
-    createE2BPtyHandle: jest.fn(),
+    createSandboxPtyHandle: jest.fn(),
   };
 });
 
-import { createE2BPtyHandle } from "../utils/e2b-pty-adapter";
-const mockCreateE2BPtyHandle = createE2BPtyHandle as jest.MockedFunction<
-  typeof createE2BPtyHandle
+import { createSandboxPtyHandle } from "../utils/sandbox-pty-adapter";
+const mockCreateE2BPtyHandle = createSandboxPtyHandle as jest.MockedFunction<
+  typeof createSandboxPtyHandle
 >;
 
 jest.mock("../utils/centrifugo-pty-adapter", () => ({
@@ -124,7 +124,7 @@ function makeFakeHandle(pid = 4242): FakeHandle {
   return handle;
 }
 
-// ── Fake sandbox that passes isE2BSandbox (has `jupyterUrl`) ─────────
+// ── Fake sandbox that passes isCloudSandbox (has `jupyterUrl`) ─────────
 
 function makeFakeE2BSandbox() {
   return {
@@ -175,7 +175,7 @@ function makeContext(opts: {
     ptySessionManager,
     mode: "agent",
     requestToolApproval: opts.requestToolApproval,
-    isE2BSandbox: (s: unknown) => {
+    isCloudSandbox: (s: unknown) => {
       if (!s || typeof s !== "object") return false;
       if ((s as { sandboxKind?: unknown }).sandboxKind === "centrifugo")
         return false;

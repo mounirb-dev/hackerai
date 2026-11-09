@@ -18,7 +18,7 @@ import {
 } from "../utils/sandbox-command-options";
 import {
   isCloudSandbox,
-  isE2BSandbox,
+  isCloudSandbox,
   getSandboxInfoForInstance,
   getSandboxLogFields,
 } from "../utils/sandbox-types";
@@ -76,10 +76,10 @@ describe("Sandbox Capabilities for Network Tools", () => {
     it("distinguishes E2B from relay sandboxes", () => {
       const cloud = createMockE2BSandbox();
       const relay = createMockCentrifugoSandbox();
-      expect(isE2BSandbox(cloud as any)).toBe(true);
-      expect(isE2BSandbox(relay as any)).toBe(false);
+      expect(isCloudSandbox(cloud as any)).toBe(true);
       expect(isCloudSandbox(relay as any)).toBe(false);
-      expect(isE2BSandbox(null)).toBe(false);
+      expect(isCloudSandbox(relay as any)).toBe(false);
+      expect(isCloudSandbox(null)).toBe(false);
     });
 
     it("separates the cloud environment type from its concrete provider", () => {
@@ -87,11 +87,11 @@ describe("Sandbox Capabilities for Network Tools", () => {
 
       expect(getSandboxInfoForInstance(e2bSandbox as any)).toEqual({
         type: "cloud",
-        provider: "e2b",
+        provider: "docker",
       });
       expect(getSandboxLogFields(e2bSandbox as any)).toEqual({
         sandbox_type: "cloud",
-        sandbox_provider: "e2b",
+        sandbox_provider: "docker",
       });
     });
 

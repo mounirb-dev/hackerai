@@ -8,7 +8,7 @@ import {
 import { wrapProviderTerminalError } from "@/lib/api/provider-terminal-error";
 import type { AnySandbox } from "@/types";
 import { getFunctionName } from "convex/server";
-import { CommandExitError } from "@e2b/code-interpreter";
+import { CommandExitError } from "@/lib/sandbox/docker";
 import { createBrowserHandoff } from "../../browser-handoff";
 import { phLogger } from "@/lib/posthog/server";
 import {

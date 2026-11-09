@@ -1,4 +1,4 @@
-import type { Sandbox } from "@e2b/code-interpreter";
+import type { Sandbox } from "@/lib/sandbox/docker";
 import type { CentrifugoSandbox } from "./centrifugo-sandbox";
 import type { AnySandbox, SandboxInfo } from "@/types";
 import type { CloudSandboxProvider } from "./cloud-sandbox-provider";
@@ -74,26 +74,21 @@ export function isCentrifugoSandbox(
 }
 
 /**
- * Type guard to check if a sandbox is an E2B Sandbox.
+ * Type guard for the self-hosted cloud (Docker) sandbox.
  *
- * Any sandbox that is not Centrifugo is treated as E2B. PTY
- * availability should be checked at the call site via `sandbox.pty`, not here.
+ * Any sandbox that is not Centrifugo is treated as cloud. PTY availability
+ * should be checked at the call site via `sandbox.pty`, not here.
  */
-export function isE2BSandbox(sandbox: AnySandbox | null): sandbox is Sandbox {
+export function isCloudSandbox(sandbox: AnySandbox | null): sandbox is Sandbox {
   if (sandbox === null) return false;
   if (isCentrifugoSandbox(sandbox)) return false;
   return true;
 }
 
-/** Any remotely hosted cloud sandbox, regardless of provider SDK. */
-export function isCloudSandbox(sandbox: AnySandbox | null): sandbox is Sandbox {
-  return isE2BSandbox(sandbox);
-}
-
 export function getCloudSandboxProviderForInstance(
   sandbox: AnySandbox | null,
 ): CloudSandboxProvider | null {
-  if (isE2BSandbox(sandbox)) return "e2b";
+  if (isCloudSandbox(sandbox)) return "docker";
   return null;
 }
 
@@ -103,7 +98,7 @@ export function getSandboxInfoForInstance(sandbox: AnySandbox): SandboxInfo {
   if (provider) return { type: "cloud", provider };
 
   if (!isCentrifugoSandbox(sandbox)) {
-    return { type: "cloud", provider: "e2b" };
+    return { type: "cloud", provider: "docker" };
   }
   const connection =
     typeof sandbox.getConnectionInfo === "function"
@@ -131,7 +126,7 @@ export function getSandboxLogFields(sandbox: AnySandbox): {
 }
 
 /**
- * Common sandbox interface that both E2B and CentrifugoSandbox implement
+ * Common sandbox interface that both the Docker sandbox and CentrifugoSandbox implement
  */
 export interface CommonSandboxInterface {
   commands: {
@@ -162,11 +157,9 @@ export interface CommonSandboxInterface {
 
 /**
  * Get the sandbox as the common interface type.
- * The `as unknown as` cast is necessary because E2B's Sandbox is an external
- * type with a structurally incompatible interface (e.g. different method
- * signatures, extra properties). Both sandbox implementations satisfy
- * CommonSandboxInterface at runtime, but TypeScript cannot verify this
- * structurally across the external type boundary.
+ * The `as unknown as` cast is necessary because the Docker sandbox's method
+ * signatures are richer than the common interface (extra options and return
+ * shapes). Both implementations satisfy CommonSandboxInterface at runtime.
  */
 export function asCommonSandbox(sandbox: AnySandbox): CommonSandboxInterface {
   return sandbox as unknown as CommonSandboxInterface;

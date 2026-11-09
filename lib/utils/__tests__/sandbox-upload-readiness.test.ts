@@ -414,7 +414,7 @@ it("retains a wrapped E2B 504 after the acquisition budget is spent", async () =
   const { CloudAcquisitionBudgetExhaustedError } =
     await import("@/lib/ai/tools/utils/cloud-acquisition-budget");
   const cause = Object.assign(new Error("Cloud sandbox unavailable"), {
-    name: "E2BAcquisitionError",
+    name: "SandboxAcquisitionError",
     diagnostics: {
       e2b_phase: "connect",
       e2b_error_category: "transient",

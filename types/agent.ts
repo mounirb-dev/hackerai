@@ -1,4 +1,4 @@
-import type { Sandbox } from "@e2b/code-interpreter";
+import type { Sandbox } from "@/lib/sandbox/docker";
 import type { UIMessageStreamWriter } from "ai";
 import type { Geo } from "@vercel/functions";
 import type { TodoManager } from "@/lib/ai/tools/utils/todo-manager";
@@ -15,7 +15,7 @@ import type { S3StorageRegion } from "@/lib/constants/s3";
 // Union type for cloud providers and local CentrifugoSandbox.
 export type AnySandbox = Sandbox | CentrifugoSandbox;
 
-// Type guard to check if sandbox is E2B
+// Type guard to check if sandbox is a cloud sandbox
 export type IsE2BSandboxFn = (s: AnySandbox | null) => s is Sandbox;
 
 /** Execution environment category used in runtime logs and analytics. */
@@ -26,8 +26,6 @@ export interface SandboxInfo {
   name?: string;
   /** Concrete cloud backend. Omitted for user-owned execution hosts. */
   provider?: CloudSandboxProvider;
-  /** Image generation from the attached E2B workspace, never the current default. */
-  sandboxVersion?: string;
 }
 
 export interface SandboxManager {
@@ -726,7 +724,7 @@ export interface ToolContext {
   /** Returns the currently active stream model, including provider fallback legs. */
   getCurrentModelName?: () => string | undefined;
   subscription?: SubscriptionTier;
-  isE2BSandbox: IsE2BSandboxFn;
+  isCloudSandbox: IsE2BSandboxFn;
   /** When set, run_terminal_cmd awaits this for each terminal chunk so the run yields and metadata delivery can happen in real time. */
   appendMetadataStream?: AppendMetadataStreamFn;
   /** Callback to report additional tool costs (in dollars) that should be added to the request's total cost. */
@@ -739,7 +737,7 @@ export interface ToolContext {
   autoReviewEvidenceEnabled?: boolean;
   /** Aggregates active wall time for cost attribution in Trigger-hosted Agent runs. */
   measureAgentActiveTime?: AgentActiveTimeMeasurer;
-  /** Observes resource metrics already fetched by E2B health checks. */
+  /** Observes resource metrics already fetched by cloud sandbox health checks. */
   onSandboxResourceMetrics?: SandboxResourceMetricsObserver;
   /** Optional Hermes-style image descriptor for text-only active models. */
   auxiliaryVision?: {

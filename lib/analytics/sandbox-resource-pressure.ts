@@ -78,7 +78,7 @@ export function createE2BResourcePressureObserver(args: {
     mode: args.mode,
     subscription_tier: args.subscription ?? "unknown",
     sandbox_type: "cloud",
-    sandbox_provider: "e2b",
+    sandbox_provider: "docker",
     ...(args.triggerRunId && { trigger_run_id: args.triggerRunId }),
     ...(args.ptyScopeId && { pty_scope_id: args.ptyScopeId }),
     cpu_saturation_threshold_pct: E2B_CPU_SATURATION_THRESHOLD_PCT,

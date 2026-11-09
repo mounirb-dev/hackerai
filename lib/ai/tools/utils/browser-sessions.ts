@@ -5,7 +5,7 @@ import { abortableDelay } from "@/lib/utils/abortable-delay";
 import type { AnySandbox } from "@/types";
 import { api } from "@/convex/_generated/api";
 import { getConvexClient } from "@/lib/db/convex-client";
-import { isE2BSandbox } from "./sandbox-types";
+import { isCloudSandbox } from "./sandbox-types";
 import { buildSandboxCommandOptions } from "./sandbox-command-options";
 import { browserSessionCommand } from "./browser-session-program";
 import { AGENT_BROWSER_IDLE_TIMEOUT_MS } from "./agent-browser-runtime";
@@ -159,7 +159,7 @@ export class BrowserSessions {
   ) {
     // Optional setup can be unavailable while ordinary browsing still works.
     // Skip automatic inspection then; later ownership/name failures still throw.
-    if (isE2BSandbox(sandbox)) {
+    if (isCloudSandbox(sandbox)) {
       if (!this.sessions.get(sandbox.sandboxId)?.registered) return undefined;
     } else if (
       !(await this.hasConnectedChallengeScope()) ||
@@ -170,7 +170,7 @@ export class BrowserSessions {
     let name = sessionName ?? runtimeDefault;
     if (
       sessionName === undefined &&
-      isE2BSandbox(sandbox) &&
+      isCloudSandbox(sandbox) &&
       runtimeDefault === "default"
     ) {
       const session = this.sessions.get(sandbox.sandboxId);
@@ -205,9 +205,11 @@ export class BrowserSessions {
   }> {
     signal.throwIfAborted();
     if (this.closed) throw new Error("Browser session ownership has ended.");
-    if (target ? !isE2BSandbox(target.sandbox) : this.connectedTargetSelected) {
+    if (
+      target ? !isCloudSandbox(target.sandbox) : this.connectedTargetSelected
+    ) {
       const connected =
-        target && !isE2BSandbox(target.sandbox)
+        target && !isCloudSandbox(target.sandbox)
           ? this.connectedBrowsers.get(
               target.sandbox.getConnectionInfo().connectionId,
             )
@@ -217,13 +219,13 @@ export class BrowserSessions {
     }
     const scope = this.handoffScope;
     const session =
-      target && isE2BSandbox(target.sandbox)
+      target && isCloudSandbox(target.sandbox)
         ? this.sessions.get(target.sandbox.sandboxId)
         : [...this.sessions.values()].findLast((s) => s.registered);
     if (
       !scope ||
       !session?.registered ||
-      !isE2BSandbox(session.sandbox) ||
+      !isCloudSandbox(session.sandbox) ||
       this.closed
     )
       throw new Error(
@@ -376,7 +378,7 @@ export class BrowserSessions {
       return false;
     const scope = this.handoffScope;
     for (const session of [...this.sessions.values()].reverse()) {
-      if (!session.registered || !isE2BSandbox(session.sandbox)) continue;
+      if (!session.registered || !isCloudSandbox(session.sandbox)) continue;
       try {
         const state = await withCancellation(
           this.observeRead("state", () =>
@@ -426,8 +428,8 @@ export class BrowserSessions {
         "Browser session ownership has ended. Start a new Agent run.",
       );
     }
-    this.connectedTargetSelected = !isE2BSandbox(sandbox);
-    if (!isE2BSandbox(sandbox)) {
+    this.connectedTargetSelected = !isCloudSandbox(sandbox);
+    if (!isCloudSandbox(sandbox)) {
       if (
         !(await this.hasConnectedChallengeScope()) ||
         !sandbox.supportsCommandStdin()
