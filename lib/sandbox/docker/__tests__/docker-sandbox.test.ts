@@ -418,18 +418,21 @@ describe("DockerSandbox.files", () => {
     name: string,
   ) => [kind, size, mode, mtime, name].join("\t");
 
-  it("write passes the path as a positional arg (never interpolated) and streams the data on stdin", async () => {
+  it("write passes path and byte length as positional args (never interpolated) and streams the data on stdin", async () => {
     const engine = new FakeEngine();
     const path = "/home/user/my dir/$(touch pwned)/f.txt";
     await sandboxOn(engine).files.write(path, "hello");
 
     const { Cmd } = engine.execs[0].body;
     expect(Cmd.slice(0, 3)[0]).toBe("/bin/sh");
-    expect(Cmd[Cmd.length - 1]).toBe(path);
+    // Args are [path, byteLength]: the script reads exactly that many bytes so
+    // it never depends on stdin EOF (unsupported by some Engine transports).
+    expect(Cmd[Cmd.length - 2]).toBe(path);
+    expect(Cmd[Cmd.length - 1]).toBe("5");
     const script = Cmd[6];
     expect(script).not.toContain("pwned");
     expect(script).toContain("mkdir -p");
-    expect(script).toContain('cat > "$1"');
+    expect(script).toContain('head -c "$2" > "$1"');
     expect(engine.execs[0].socket.stdin.toString()).toBe("hello");
   });
 

@@ -320,10 +320,16 @@ export class DockerSandbox {
           : data instanceof ArrayBuffer
             ? new Uint8Array(data)
             : data;
+      // The script reads exactly N bytes instead of waiting for EOF: closing
+      // only the write half of the connection is not honoured by every Engine
+      // transport (Windows named pipes drop the whole connection).
+      const bytes =
+        typeof payload === "string" ? Buffer.from(payload) : payload;
       const result = await this.exec(
-        `mkdir -p -- "$(dirname -- "$1")" && cat > "$1" && { chown user:user "$1" 2>/dev/null; true; }`,
-        [path],
-        payload,
+        `mkdir -p -- "$(dirname -- "$1")" && head -c "$2" > "$1" && { chown user:user "$1" 2>/dev/null; true; }`,
+        [path, String(bytes.byteLength)],
+        bytes,
+        { holdStdin: true },
       );
       if (result.exitCode !== 0) throw this.fileError(path, result);
     },
@@ -580,12 +586,18 @@ export class DockerSandbox {
     script: string,
     args: string[] = [],
     stdin?: string | Uint8Array,
+    options: { holdStdin?: boolean } = {},
   ): Promise<ExecResult> {
     const proc = await startExec(this.engine, this.sandboxId, {
       cmd: ["/bin/sh", "-c", script, "sh", ...args],
       stdin,
+      interactive: options.holdStdin === true,
     });
-    return proc.wait();
+    try {
+      return await proc.wait();
+    } finally {
+      if (options.holdStdin) proc.detach();
+    }
   }
 
   private requirePty(pid: number): ExecProcess {

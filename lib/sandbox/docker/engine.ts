@@ -10,7 +10,8 @@ import http from "node:http";
 import type { Duplex } from "node:stream";
 import { DockerEngineError } from "./errors";
 
-const API_VERSION = "v1.41";
+// Unversioned paths target the daemon's own API version. A pinned version breaks
+// as soon as a daemon raises its minimum (Docker 29 rejects anything below 1.44).
 
 type Endpoint = { socketPath: string } | { host: string; port: number };
 
@@ -65,8 +66,13 @@ function buildPath(path: string, query: EngineRequest["query"]): string {
     );
   }
   const qs = params.toString();
-  return `/${API_VERSION}${path}${qs ? `?${qs}` : ""}`;
+  return `${path}${qs ? `?${qs}` : ""}`;
 }
+
+// Node's shared agent applies a 5s idle socket timeout to keep-alive sockets,
+// which would abort slow Engine calls (image pull, container stop). Engine
+// calls are short-lived, so use a plain agent and set deadlines explicitly.
+const engineAgent = new http.Agent({ keepAlive: false });
 
 export class DockerEngine {
   constructor(private readonly endpoint: Endpoint = resolveDockerEndpoint()) {}
@@ -94,6 +100,7 @@ export class DockerEngine {
             ...(payload && { "Content-Length": String(payload.length) }),
             ...options.headers,
           },
+          agent: engineAgent,
           signal: options.signal,
           timeout: options.timeoutMs,
         },
@@ -151,6 +158,7 @@ export class DockerEngine {
         ...this.endpoint,
         method: "POST",
         path: buildPath(path, undefined),
+        agent: engineAgent,
         headers: {
           "Content-Type": "application/json",
           "Content-Length": String(payload.length),
