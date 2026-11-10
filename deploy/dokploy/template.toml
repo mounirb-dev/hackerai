@@ -5,6 +5,7 @@
 main_domain = "${domain}"
 convex_domain = "${domain}"
 s3_domain = "${domain}"
+trigger_domain = "${domain}"
 postgres_password = "${password:32}"
 convex_service_role_key = "${password:48}"
 account_identity_hmac_secret = "${base64:32}"
@@ -13,6 +14,16 @@ convex_instance_secret = "${hash:64}"
 garage_rpc_secret = "${hash:64}"
 garage_admin_token = "${password:48}"
 s3_secret_seed = "${password:48}"
+trigger_postgres_password = "${password:32}"
+trigger_clickhouse_password = "${password:32}"
+trigger_object_store_secret = "${password:32}"
+trigger_session_secret = "${hash:32}"
+trigger_magic_link_secret = "${hash:32}"
+trigger_encryption_key = "${hash:32}"
+trigger_provider_secret = "${hash:32}"
+trigger_coordinator_secret = "${hash:32}"
+trigger_managed_worker_secret = "${hash:32}"
+trigger_cli_token = "tr_pat_${hash:40}"
 trigger_bootstrap_email = "${email}"
 trigger_bootstrap_project_name = "HackerAI Agent"
 # These are the only operator-provided values in the template.
@@ -34,6 +45,11 @@ host = "${convex_domain}"
 serviceName = "garage"
 port = 3900
 host = "${s3_domain}"
+
+[[config.domains]]
+serviceName = "trigger-webapp"
+port = 3000
+host = "${trigger_domain}"
 
 [config.env]
 NEXT_PUBLIC_BASE_URL = "https://${main_domain}"
@@ -59,6 +75,17 @@ DOCKER_SANDBOX_IMAGE = "hackerai/sandbox:latest"
 SANDBOX_MEMORY_MB = 2048
 SANDBOX_CPUS = 1
 SANDBOX_IDLE_TIMEOUT_SECONDS = 900
+TRIGGER_PUBLIC_URL = "https://${trigger_domain}"
+TRIGGER_POSTGRES_PASSWORD = "${trigger_postgres_password}"
+TRIGGER_CLICKHOUSE_PASSWORD = "${trigger_clickhouse_password}"
+TRIGGER_OBJECT_STORE_SECRET = "${trigger_object_store_secret}"
+TRIGGER_SESSION_SECRET = "${trigger_session_secret}"
+TRIGGER_MAGIC_LINK_SECRET = "${trigger_magic_link_secret}"
+TRIGGER_ENCRYPTION_KEY = "${trigger_encryption_key}"
+TRIGGER_PROVIDER_SECRET = "${trigger_provider_secret}"
+TRIGGER_COORDINATOR_SECRET = "${trigger_coordinator_secret}"
+TRIGGER_MANAGED_WORKER_SECRET = "${trigger_managed_worker_secret}"
+TRIGGER_CLI_TOKEN = "${trigger_cli_token}"
 TRIGGER_BOOTSTRAP_EMAIL = "${trigger_bootstrap_email}"
 TRIGGER_BOOTSTRAP_PROJECT_NAME = "${trigger_bootstrap_project_name}"
 HACKERAI_BUILD_CONTEXT = "https://github.com/mounirb-dev/hackerai.git"

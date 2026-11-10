@@ -19,12 +19,10 @@ services:
       args:
         NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
         NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
-        NEXT_PUBLIC_TRIGGER_API_URL: ${NEXT_PUBLIC_TRIGGER_API_URL:-https://api.trigger.dev}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
       NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
-      NEXT_PUBLIC_TRIGGER_API_URL: ${NEXT_PUBLIC_TRIGGER_API_URL:-https://api.trigger.dev}
       CONVEX_INTERNAL_URL: ${CONVEX_INTERNAL_URL:-http://convex:3210}
       CONVEX_SERVICE_ROLE_KEY: ${CONVEX_SERVICE_ROLE_KEY}
       ACCOUNT_IDENTITY_HMAC_SECRET: ${ACCOUNT_IDENTITY_HMAC_SECRET}
@@ -42,11 +40,11 @@ services:
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
       OLLAMA_VISION: ${OLLAMA_VISION:-false}
-      # Trigger.dev self-hosted (local API + project credentials).
-      # Server-side SDK traffic must use Trigger's internal Docker hostname.
-      # The browser uses the same-origin realtime proxy below.
-      TRIGGER_API_URL: ${TRIGGER_API_URL:-http://webapp:3000}
-      TRIGGER_INTERNAL_URL: ${TRIGGER_INTERNAL_URL:-}
+      # Trigger.dev self-hosted (bundled `trigger-*` services below).
+      # Server-side SDK traffic uses Trigger's internal Docker hostname; the
+      # browser goes through the same-origin /api/trigger-realtime proxy.
+      TRIGGER_API_URL: ${TRIGGER_API_URL:-http://trigger-webapp:3000}
+      TRIGGER_INTERNAL_URL: ${TRIGGER_INTERNAL_URL:-http://trigger-webapp:3000}
       TRIGGER_PROJECT_ID: ${TRIGGER_PROJECT_ID:-}
       TRIGGER_SECRET_KEY: ${TRIGGER_SECRET_KEY:-}
       TRIGGER_CREDENTIALS_FILE: /run/trigger/credentials.env
@@ -63,38 +61,49 @@ services:
         condition: service_started
       trigger-bootstrap:
         condition: service_completed_successfully
+      trigger-cli-token:
+        condition: service_completed_successfully
     networks:
       - default
       - dokploy-network
-      - trigger-webapp
+      - trigger
     volumes:
       - trigger-credentials:/run/trigger:ro
     expose:
       - "3000"
 
   # Headless Trigger.dev project bootstrap. It reuses the existing project or
-  # creates one directly in Trigger's Postgres, then persists the dev key in a
-  # named volume. No dashboard login or hand-copied API key is needed.
+  # creates one directly in Trigger's Postgres, then persists the project key
+  # in a named volume. No dashboard login or hand-copied API key is needed.
   trigger-bootstrap:
     image: postgres:14-alpine
     restart: "no"
     environment:
-      PGHOST: ${TRIGGER_DB_HOST:-postgres}
-      PGPORT: ${TRIGGER_DB_PORT:-5432}
-      PGUSER: ${TRIGGER_DB_USER:-postgres}
-      PGDATABASE: ${TRIGGER_DB_NAME:-main}
-      PGPASSWORD: ${TRIGGER_POSTGRES_PASSWORD:-}
+      PGHOST: trigger-postgres
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGDATABASE: main
+      PGPASSWORD: ${TRIGGER_POSTGRES_PASSWORD}
       TRIGGER_PROJECT_ID: ${TRIGGER_PROJECT_ID:-}
       TRIGGER_SECRET_KEY: ${TRIGGER_SECRET_KEY:-}
       TRIGGER_BOOTSTRAP_EMAIL: ${TRIGGER_BOOTSTRAP_EMAIL:-admin@hackerai.local}
       TRIGGER_BOOTSTRAP_PROJECT_NAME: ${TRIGGER_BOOTSTRAP_PROJECT_NAME:-HackerAI Agent}
+      # Which Trigger environment's secret key the app uses: PRODUCTION for a
+      # deployed worker (`trigger deploy`), DEVELOPMENT for `trigger dev`.
+      TRIGGER_BOOTSTRAP_ENV: ${TRIGGER_BOOTSTRAP_ENV:-PRODUCTION}
       TRIGGER_CREDENTIALS_FILE: /run/trigger/credentials.env
     volumes:
       - trigger-credentials:/run/trigger
-      - ./trigger-bootstrap.sh:/usr/local/bin/trigger-bootstrap.sh:ro
+    configs:
+      - source: trigger-bootstrap-script
+        target: /usr/local/bin/trigger-bootstrap.sh
+        mode: 0555
     entrypoint: ["/bin/sh", "/usr/local/bin/trigger-bootstrap.sh"]
+    depends_on:
+      trigger-webapp:
+        condition: service_healthy
     networks:
-      - trigger-webapp
+      - trigger
 
   postgres:
     image: postgres:17-alpine
@@ -265,7 +274,360 @@ services:
       - ollama
     entrypoint: ["/bin/sh", "-c", 'ollama pull "$$OLLAMA_MODEL"']
 
+  # ---------------------------------------------------------------------------
+  # Self-hosted Trigger.dev (runs the durable Agent jobs). Mirrors the upstream
+  # hosting/docker stack used locally (stack/trigger-upstream) on one network,
+  # with the resource limits of its minimal override.
+  # ---------------------------------------------------------------------------
+  trigger-webapp:
+    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      trigger-postgres:
+        condition: service_healthy
+      trigger-redis:
+        condition: service_healthy
+      trigger-clickhouse:
+        condition: service_healthy
+      trigger-s2:
+        condition: service_started
+      trigger-electric:
+        condition: service_started
+    networks:
+      - trigger
+      - dokploy-network
+    volumes:
+      - trigger-shared:/home/node/shared
+    # Only needed for bootstrap (worker token written to the shared volume).
+    user: root
+    command: sh -c "chown -R node:node /home/node/shared && exec ./scripts/entrypoint.sh"
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "http.get('http://localhost:3000/healthcheck', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 8
+      # First boot applies every Prisma migration, which takes minutes.
+      start_period: 180s
+    environment:
+      APP_ORIGIN: ${TRIGGER_PUBLIC_URL}
+      LOGIN_ORIGIN: ${TRIGGER_PUBLIC_URL}
+      API_ORIGIN: ${TRIGGER_PUBLIC_URL}
+      ELECTRIC_ORIGIN: http://trigger-electric:3000
+      # Only this address can sign in to the Trigger dashboard.
+      WHITELISTED_EMAILS: ${TRIGGER_BOOTSTRAP_EMAIL:-admin@hackerai.local}
+      REALTIME_STREAMS_DEFAULT_VERSION: v2
+      REALTIME_STREAMS_S2_BASIN: trigger-realtime
+      REALTIME_STREAMS_S2_ENDPOINT: http://trigger-s2/v1
+      REALTIME_STREAMS_S2_SKIP_ACCESS_TOKENS: "true"
+      DATABASE_URL: postgresql://postgres:${TRIGGER_POSTGRES_PASSWORD}@trigger-postgres:5432/main?schema=public&sslmode=disable
+      DIRECT_URL: postgresql://postgres:${TRIGGER_POSTGRES_PASSWORD}@trigger-postgres:5432/main?schema=public&sslmode=disable
+      SESSION_SECRET: ${TRIGGER_SESSION_SECRET}
+      MAGIC_LINK_SECRET: ${TRIGGER_MAGIC_LINK_SECRET}
+      MAGIC_LINK_SAME_BROWSER_REQUIRED: "true"
+      ENCRYPTION_KEY: ${TRIGGER_ENCRYPTION_KEY}
+      PROVIDER_SECRET: ${TRIGGER_PROVIDER_SECRET}
+      COORDINATOR_SECRET: ${TRIGGER_COORDINATOR_SECRET}
+      MANAGED_WORKER_SECRET: ${TRIGGER_MANAGED_WORKER_SECRET}
+      REDIS_HOST: trigger-redis
+      REDIS_PORT: "6379"
+      REDIS_TLS_DISABLED: "true"
+      APP_LOG_LEVEL: info
+      DEV_OTEL_EXPORTER_OTLP_ENDPOINT: ${TRIGGER_PUBLIC_URL}/otel
+      DEPLOY_REGISTRY_HOST: ${TRIGGER_REGISTRY_HOST:-localhost:5000}
+      DEPLOY_REGISTRY_NAMESPACE: trigger
+      # Architecture of the task images `trigger deploy` builds; must match the host.
+      DEPLOY_IMAGE_PLATFORM: ${TRIGGER_IMAGE_PLATFORM:-linux/amd64}
+      DEPLOY_REGISTRY_USERNAME: ${TRIGGER_REGISTRY_USER:-}
+      DEPLOY_REGISTRY_PASSWORD: ${TRIGGER_REGISTRY_PASSWORD:-}
+      OBJECT_STORE_BASE_URL: http://trigger-minio:9000
+      OBJECT_STORE_ACCESS_KEY_ID: admin
+      OBJECT_STORE_SECRET_ACCESS_KEY: ${TRIGGER_OBJECT_STORE_SECRET}
+      GRACEFUL_SHUTDOWN_TIMEOUT: "1000"
+      NODE_MAX_OLD_SPACE_SIZE: ${TRIGGER_NODE_MAX_OLD_SPACE_SIZE:-1536}
+      # Creates a worker group and writes its token to the shared volume.
+      TRIGGER_BOOTSTRAP_ENABLED: "1"
+      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
+      TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
+      CLICKHOUSE_URL: http://default:${TRIGGER_CLICKHOUSE_PASSWORD}@trigger-clickhouse:8123?secure=false
+      CLICKHOUSE_LOG_LEVEL: info
+      RUN_REPLICATION_ENABLED: "1"
+      RUN_REPLICATION_CLICKHOUSE_URL: http://default:${TRIGGER_CLICKHOUSE_PASSWORD}@trigger-clickhouse:8123
+      RUN_REPLICATION_LOG_LEVEL: info
+      INTERNAL_OTEL_TRACE_LOGGING_ENABLED: "0"
+
+  # Optional: registers TRIGGER_CLI_TOKEN (tr_pat_...) as a personal access token
+  # of the bootstrap user, so `trigger deploy` can log in without the dashboard.
+  # Runs in the Trigger image because tokens are stored AES-256-GCM encrypted
+  # with the webapp's ENCRYPTION_KEY.
+  trigger-cli-token:
+    image: ghcr.io/triggerdotdev/trigger.dev:${TRIGGER_IMAGE_TAG:-latest}
+    restart: "no"
+    user: root
+    environment:
+      DATABASE_URL: postgresql://postgres:${TRIGGER_POSTGRES_PASSWORD}@trigger-postgres:5432/main
+      ENCRYPTION_KEY: ${TRIGGER_ENCRYPTION_KEY}
+      TRIGGER_CLI_TOKEN: ${TRIGGER_CLI_TOKEN:-}
+      TRIGGER_BOOTSTRAP_EMAIL: ${TRIGGER_BOOTSTRAP_EMAIL:-admin@hackerai.local}
+    configs:
+      - source: trigger-cli-token-script
+        target: /cli-token.js
+    entrypoint: ["node", "/cli-token.js"]
+    depends_on:
+      trigger-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - trigger
+
+  trigger-supervisor:
+    image: ghcr.io/triggerdotdev/supervisor:${TRIGGER_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      trigger-docker-proxy:
+        condition: service_started
+      trigger-webapp:
+        condition: service_healthy
+    networks:
+      - trigger
+    volumes:
+      - trigger-shared:/home/node/shared
+    user: root
+    command: sh -c "chown -R node:node /home/node/shared && exec /usr/bin/dumb-init -- pnpm run --filter supervisor start"
+    environment:
+      TRIGGER_WORKER_TOKEN: file:///home/node/shared/worker_token
+      MANAGED_WORKER_SECRET: ${TRIGGER_MANAGED_WORKER_SECRET}
+      TRIGGER_API_URL: http://trigger-webapp:3000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://trigger-webapp:3000/otel
+      TRIGGER_WORKLOAD_API_DOMAIN: trigger-supervisor
+      TRIGGER_WORKLOAD_API_PORT_EXTERNAL: "8020"
+      ENFORCE_MACHINE_PRESETS: "1"
+      TRIGGER_DEQUEUE_INTERVAL_MS: "1000"
+      DOCKER_HOST: tcp://trigger-docker-proxy:2375
+      # Run containers join this network to reach the webapp and supervisor.
+      DOCKER_RUNNER_NETWORKS: hackerai-trigger
+      DOCKER_REGISTRY_URL: ${TRIGGER_REGISTRY_HOST:-localhost:5000}
+      DOCKER_REGISTRY_USERNAME: ${TRIGGER_REGISTRY_USER:-}
+      DOCKER_REGISTRY_PASSWORD: ${TRIGGER_REGISTRY_PASSWORD:-}
+      DOCKER_AUTOREMOVE_EXITED_CONTAINERS: "0"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "http.get('http://localhost:8020/health', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # Separate from the sandbox `docker-proxy`: Trigger's supervisor also needs
+  # INFO and NETWORKS, which the sandbox provisioner does not.
+  trigger-docker-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0
+    restart: unless-stopped
+    environment:
+      LOG_LEVEL: info
+      POST: 1
+      CONTAINERS: 1
+      IMAGES: 1
+      INFO: 1
+      NETWORKS: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - trigger
+
+  trigger-postgres:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    command: ["postgres", "-c", "wal_level=logical", "-c", "shared_buffers=128MB"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TRIGGER_POSTGRES_PASSWORD}
+      POSTGRES_DB: main
+    volumes:
+      - trigger-postgres-data:/var/lib/postgresql/data
+    networks:
+      - trigger
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "main"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  trigger-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - trigger-redis-data:/data
+    networks:
+      - trigger
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  trigger-electric:
+    image: electricsql/electric:1.2.4
+    restart: unless-stopped
+    depends_on:
+      trigger-postgres:
+        condition: service_healthy
+    networks:
+      - trigger
+    environment:
+      DATABASE_URL: postgresql://postgres:${TRIGGER_POSTGRES_PASSWORD}@trigger-postgres:5432/main?schema=public&sslmode=disable
+      ELECTRIC_INSECURE: "true"
+      ELECTRIC_USAGE_REPORTING: "false"
+
+  trigger-clickhouse:
+    image: clickhouse/clickhouse-server:26.2
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ${TRIGGER_CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - trigger-clickhouse-data:/var/lib/clickhouse
+    configs:
+      - source: trigger-clickhouse-config
+        target: /etc/clickhouse-server/config.d/override.xml
+      - source: trigger-clickhouse-users
+        target: /etc/clickhouse-server/users.d/override.xml
+    networks:
+      - trigger
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --host localhost --port 9000 --user default --password \"$$CLICKHOUSE_PASSWORD\" --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # Image registry for `trigger deploy`. The supervisor's Docker daemon pulls
+  # task images from it, so anything pushed here runs on the host: it is always
+  # behind basic auth (TRIGGER_REGISTRY_HTPASSWD, a bcrypt htpasswd line) and is
+  # only reachable publicly if you add a route for `trigger-registry:5000`.
+  trigger-registry:
+    image: registry:2
+    restart: unless-stopped
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    configs:
+      - source: trigger-registry-htpasswd
+        target: /auth/htpasswd
+    volumes:
+      - trigger-registry-data:/var/lib/registry
+    networks:
+      - trigger
+      - dokploy-network
+    expose:
+      - "5000"
+
+  trigger-minio:
+    image: bitnamilegacy/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: ${TRIGGER_OBJECT_STORE_SECRET}
+      MINIO_DEFAULT_BUCKETS: packets
+      MINIO_BROWSER: "off"
+    volumes:
+      - trigger-minio-data:/bitnami/minio/data
+    networks:
+      - trigger
+
+  # s2-lite backs Trigger's realtime streams (agent token streaming). It is
+  # distroless, so a tiny init container writes its basin spec first.
+  trigger-s2-init:
+    image: busybox:1.37
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        cat > /config/s2-spec.json <<'JSON'
+        {"basins":[{"name":"trigger-realtime","config":{"create_stream_on_append":true,"create_stream_on_read":true}}]}
+        JSON
+    volumes:
+      - trigger-s2-config:/config
+
+  trigger-s2:
+    image: ghcr.io/s2-streamstore/s2:latest@sha256:d6ded5ca7dd619fa7c946f06e39a98f9c95c6883c8bb884e5eaa129f232c920c
+    restart: unless-stopped
+    depends_on:
+      trigger-s2-init:
+        condition: service_completed_successfully
+    command: ["lite", "--init-file", "/config/s2-spec.json", "--local-root", "/data"]
+    user: "0:0"
+    volumes:
+      - trigger-s2-config:/config
+      - trigger-s2-data:/data
+    networks:
+      - trigger
+
 configs:
+  trigger-cli-token-script:
+    file: ./trigger-cli-token.js
+  # Empty by default: the registry then rejects every push until you set a
+  # bcrypt htpasswd line (docker run --rm httpd:2.4-alpine htpasswd -Bbn user pass).
+  trigger-registry-htpasswd:
+    content: ${TRIGGER_REGISTRY_HTPASSWD:-}
+  trigger-bootstrap-script:
+    file: ./trigger-bootstrap.sh
+  trigger-clickhouse-config:
+    content: |
+      <clickhouse>
+        <logger><level>warning</level></logger>
+        <mark_cache_size>524288000</mark_cache_size>
+        <concurrent_threads_soft_limit_num>1</concurrent_threads_soft_limit_num>
+        <metric_log remove="1"/>
+        <asynchronous_metric_log remove="1"/>
+        <trace_log remove="1"/>
+        <query_thread_log remove="1"/>
+        <session_log remove="1"/>
+        <text_log remove="1"/>
+        <zookeeper_log remove="1"/>
+        <processors_profile_log remove="1"/>
+        <asynchronous_insert_log remove="1"/>
+        <backup_log remove="1"/>
+        <latency_log remove="1"/>
+        <query_metric_log remove="1"/>
+        <opentelemetry_span_log remove="1"/>
+        <query_views_log remove="1"/>
+        <part_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></part_log>
+        <query_log><ttl>event_date + INTERVAL 7 DAY DELETE</ttl></query_log>
+        <error_log><ttl>event_date + INTERVAL 30 DAY DELETE</ttl></error_log>
+      </clickhouse>
+  trigger-clickhouse-users:
+    content: |
+      <clickhouse>
+        <profiles>
+          <default>
+            <max_threads>1</max_threads>
+            <max_block_size>8192</max_block_size>
+            <max_download_threads>1</max_download_threads>
+            <input_format_parallel_parsing>0</input_format_parallel_parsing>
+            <output_format_parallel_formatting>0</output_format_parallel_formatting>
+            <memory_profiler_step>0</memory_profiler_step>
+            <memory_profiler_sample_probability>0</memory_profiler_sample_probability>
+            <query_profiler_real_time_period_ns>0</query_profiler_real_time_period_ns>
+            <query_profiler_cpu_time_period_ns>0</query_profiler_cpu_time_period_ns>
+          </default>
+        </profiles>
+      </clickhouse>
   postgres-init:
     content: |
       CREATE DATABASE convex_self_hosted;
@@ -295,8 +657,17 @@ volumes:
   garage-data:
   ollama-models:
   trigger-credentials:
+  trigger-shared:
+  trigger-postgres-data:
+  trigger-redis-data:
+  trigger-clickhouse-data:
+  trigger-minio-data:
+  trigger-s2-config:
+  trigger-s2-data:
+  trigger-registry-data:
 
 networks:
   dokploy-network:
     external: true
-  trigger-webapp:
+  trigger:
+    name: hackerai-trigger

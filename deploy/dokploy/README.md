@@ -93,10 +93,21 @@ Back up the volumes `postgres-data` (accounts and all app data),
 
 ## Limitations
 
-- **Agent Long mode needs a worker that can reach `DOCKER_HOST`.** Trigger.dev
-  Cloud workers cannot reach a private Docker proxy. Run a self-hosted
-  Trigger.dev worker on the same network, or use the in-app Agent path. Do not
-  expose the Docker proxy to the internet.
+- **Trigger.dev is bundled (`trigger-*` services), but the tasks must be
+  deployed to it.** Add a public route for `trigger-webapp:3000` (set
+  `TRIGGER_PUBLIC_URL` to it) and, to push task images, one for
+  `trigger-registry:5000` protected by a bcrypt line in
+  `TRIGGER_REGISTRY_HTPASSWD` (`docker run --rm httpd:2.4-alpine htpasswd -Bbn
+trigger <password>`; also set `TRIGGER_REGISTRY_HOST`, `TRIGGER_REGISTRY_USER`
+  and `TRIGGER_REGISTRY_PASSWORD`). Anything pushed to the registry runs on the
+  host. Set `TRIGGER_IMAGE_PLATFORM` to the host architecture (`linux/arm64` on
+  ARM). Then, from the repo with `TRIGGER_ACCESS_TOKEN` (= `TRIGGER_CLI_TOKEN`)
+  and `TRIGGER_PROJECT_ID` set and `docker login <registry>` done:
+  `npx trigger deploy --env prod --api-url <TRIGGER_PUBLIC_URL> --push`
+  (not `--local-build`, which targets Trigger Cloud's registry).
+  The app uses the `PRODUCTION` environment key (`TRIGGER_BOOTSTRAP_ENV`); use
+  `DEVELOPMENT` locally with `pnpm dev:trigger`. Do not expose the Docker
+  proxies to the internet.
 - The Docker socket proxy still grants container control on the host: run this
   stack on a dedicated machine.
 - The live browser handoff needs wildcard DNS to the sandbox

@@ -3,17 +3,9 @@ services:
   app:
     ports:
       - "3100:3000"
-    networks:
-      - default
-      - dokploy-network
-      - trigger-webapp
-    volumes:
-      - trigger-credentials:/run/trigger:ro
-  trigger-bootstrap:
-    environment:
-      TRIGGER_POSTGRES_PASSWORD: ${TRIGGER_POSTGRES_PASSWORD:-}
-    volumes:
-      - trigger-credentials:/run/trigger
+  trigger-webapp:
+    ports:
+      - "8030:3000"
   postgres:
     ports:
       - "5433:5432"
@@ -24,11 +16,3 @@ services:
     ports:
       - "3900:3900"
       - "3903:3903"
-
-volumes:
-  trigger-credentials:
-
-networks:
-  trigger-webapp:
-    external: true
-    name: webapp

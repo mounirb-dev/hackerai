@@ -1,0 +1,3 @@
+# Scripts mounted into Linux containers must keep LF endings.
+*.sh text eol=lf
+deploy/dokploy/*.js text eol=lf
