@@ -13,6 +13,11 @@ convex_instance_secret = "${hash:64}"
 garage_rpc_secret = "${hash:64}"
 garage_admin_token = "${password:48}"
 s3_secret_seed = "${password:48}"
+trigger_bootstrap_email = "${email}"
+trigger_bootstrap_project_name = "HackerAI Agent"
+# These are the only operator-provided values in the template.
+ollama_base_url = ""
+ollama_api_key = ""
 
 [config]
 [[config.domains]]
@@ -30,29 +35,32 @@ serviceName = "garage"
 port = 3900
 host = "${s3_domain}"
 
-[config.env]
-NEXT_PUBLIC_BASE_URL = "https://${main_domain}"
-NEXT_PUBLIC_CONVEX_URL = "https://${convex_domain}"
-AWS_S3_ENDPOINT = "https://${s3_domain}"
-AWS_S3_BUCKET_NAME = "hackerai"
-POSTGRES_PASSWORD = "${postgres_password}"
-CONVEX_SERVICE_ROLE_KEY = "${convex_service_role_key}"
-CONVEX_INSTANCE_SECRET = "${convex_instance_secret}"
-ACCOUNT_IDENTITY_HMAC_SECRET = "${account_identity_hmac_secret}"
-GARAGE_RPC_SECRET = "${garage_rpc_secret}"
-GARAGE_ADMIN_TOKEN = "${garage_admin_token}"
-S3_SECRET_SEED = "${s3_secret_seed}"
+env = [
+  "NEXT_PUBLIC_BASE_URL=https://${main_domain}",
+  "NEXT_PUBLIC_CONVEX_URL=https://${convex_domain}",
+  "AWS_S3_ENDPOINT=https://${s3_domain}",
+  "AWS_S3_BUCKET_NAME=hackerai",
+  "POSTGRES_PASSWORD=${postgres_password}",
+  "CONVEX_SERVICE_ROLE_KEY=${convex_service_role_key}",
+  "CONVEX_INSTANCE_SECRET=${convex_instance_secret}",
+  "ACCOUNT_IDENTITY_HMAC_SECRET=${account_identity_hmac_secret}",
+  "GARAGE_RPC_SECRET=${garage_rpc_secret}",
+  "GARAGE_ADMIN_TOKEN=${garage_admin_token}",
+  "S3_SECRET_SEED=${s3_secret_seed}",
 # Close sign-ups after creating your account:
-AUTH_ALLOW_SIGNUPS = "true"
-SELFHOST_ENTITLEMENTS = "ultra-plan"
-# LLM: a remote Ollama (recommended on small hosts) ...
-OLLAMA_BASE_URL = ""
-OLLAMA_API_KEY = ""
-OLLAMA_MODEL = "qwen3:4b"
-OLLAMA_VISION = "false"
+  "AUTH_ALLOW_SIGNUPS=true",
+  "SELFHOST_ENTITLEMENTS=ultra-plan",
+# LLM: the remote Ollama URL and key are intentionally the only manual inputs.
+  "OLLAMA_BASE_URL=${ollama_base_url}",
+  "OLLAMA_API_KEY=${ollama_api_key}",
+  "OLLAMA_MODEL=qwen3:4b",
+  "OLLAMA_VISION=false",
 # ... or the bundled one: COMPOSE_PROFILES = "local-llm"
-COMPOSE_PROFILES = ""
-DOCKER_SANDBOX_IMAGE = "hackerai/sandbox:latest"
-SANDBOX_MEMORY_MB = "2048"
-SANDBOX_CPUS = "1"
-SANDBOX_IDLE_TIMEOUT_SECONDS = "900"
+  "COMPOSE_PROFILES=",
+  "DOCKER_SANDBOX_IMAGE=hackerai/sandbox:latest",
+  "SANDBOX_MEMORY_MB=2048",
+  "SANDBOX_CPUS=1",
+  "SANDBOX_IDLE_TIMEOUT_SECONDS=900",
+  "TRIGGER_BOOTSTRAP_EMAIL=${trigger_bootstrap_email}",
+  "TRIGGER_BOOTSTRAP_PROJECT_NAME=${trigger_bootstrap_project_name}",
+]

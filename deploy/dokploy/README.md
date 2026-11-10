@@ -18,10 +18,11 @@ Everything runs on your own host: no WorkOS, no Convex Cloud, no AWS, no E2B.
 1. Point three hostnames at the host, for example `hackerai.example.com`
    (app), `convex.example.com` (Convex API, browsers keep a WebSocket to it)
    and `s3.example.com` (presigned file URLs).
-2. In Dokploy, create a **Compose** service from this repository with compose
-   path `deploy/dokploy/docker-compose.yml`, or import `template.toml`.
+2. In Dokploy, import `template.toml` as a **Template**. The template generates
+   the database, Convex, Garage, auth and Trigger bootstrap secrets. Only
+   `OLLAMA_BASE_URL` and `OLLAMA_API_KEY` remain operator-provided values.
 3. Map the domains: `app:3000`, `convex:3210`, `garage:3900`.
-4. Set the environment below and deploy. Wait for `setup` to exit with code 0;
+4. Set only the remote Ollama URL and API key, then deploy. Wait for `setup` to exit with code 0;
    it re-runs on every deploy and pushes the current Convex functions.
 5. Open the app, create your account at `/auth/sign-up`, then set
    `AUTH_ALLOW_SIGNUPS=false` and redeploy to close sign-ups.
