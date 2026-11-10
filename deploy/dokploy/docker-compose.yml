@@ -48,6 +48,9 @@ services:
       TRIGGER_PROJECT_ID: ${TRIGGER_PROJECT_ID:-}
       TRIGGER_SECRET_KEY: ${TRIGGER_SECRET_KEY:-}
       TRIGGER_CREDENTIALS_FILE: /run/trigger/credentials.env
+      # Rate limiting speaks the Upstash REST protocol; `redis-rest` provides it.
+      UPSTASH_REDIS_REST_URL: http://redis-rest:80
+      UPSTASH_REDIS_REST_TOKEN: ${REDIS_REST_TOKEN}
       # Sandbox runtime
       DOCKER_HOST: tcp://docker-proxy:2375
       DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
@@ -383,6 +386,21 @@ services:
     depends_on:
       trigger-bootstrap:
         condition: service_completed_successfully
+    networks:
+      - trigger
+
+  # Upstash-compatible REST gateway over Redis (rate limits). Reuses Trigger's
+  # Redis on a separate database index.
+  redis-rest:
+    image: hiett/serverless-redis-http:latest
+    restart: unless-stopped
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: ${REDIS_REST_TOKEN}
+      SRH_CONNECTION_STRING: redis://trigger-redis:6379/5
+    depends_on:
+      trigger-redis:
+        condition: service_healthy
     networks:
       - trigger
 
