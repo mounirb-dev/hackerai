@@ -10,21 +10,25 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches ./patches
 COPY packages/desktop/package.json ./packages/desktop/
 COPY packages/local/package.json ./packages/local/
+COPY packages/workos-authkit-nextjs/package.json ./packages/workos-authkit-nextjs/
+COPY packages/workos-node/package.json ./packages/workos-node/
+COPY packages/workos-widgets/package.json ./packages/workos-widgets/
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 
-FROM node:22-slim AS build
+# Sources + dependencies. Also the image of the compose `setup` job, which
+# deploys ./convex to the self-hosted Convex backend.
+FROM node:22-slim AS source
 RUN corepack enable
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# `COPY . .` also copies workspace package sources; the web app does not use them.
+
+FROM source AS build
 ARG NEXT_PUBLIC_BASE_URL
 ARG NEXT_PUBLIC_CONVEX_URL
-ARG NEXT_PUBLIC_WORKOS_REDIRECT_URI
 ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL \
     NEXT_PUBLIC_CONVEX_URL=$NEXT_PUBLIC_CONVEX_URL \
-    NEXT_PUBLIC_WORKOS_REDIRECT_URI=$NEXT_PUBLIC_WORKOS_REDIRECT_URI \
     NEXT_OUTPUT=standalone \
     NEXT_TELEMETRY_DISABLED=1
 # `next build` directly: the repo's `pnpm build` also uploads PostHog sourcemaps.

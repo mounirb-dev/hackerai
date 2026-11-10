@@ -1,0 +1,11 @@
+{
+  "name": "@workos-inc/widgets",
+  "version": "0.0.0-selfhost",
+  "private": true,
+  "description": "Self-hosted replacement for @workos-inc/widgets (see lib/selfhost)",
+  "exports": {
+    "./user-security": "./user-security.tsx",
+    "./workos-widgets": "./workos-widgets.tsx",
+    "./styles.css": "./styles.css"
+  }
+}

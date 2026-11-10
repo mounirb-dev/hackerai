@@ -1,14 +1,8 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
 const mockWithAuth = jest.fn();
 const mockListOrganizationMemberships = jest.fn();
+const mockGetOrganization = jest.fn();
 
 jest.mock("@workos-inc/authkit-nextjs", () => ({
   withAuth: mockWithAuth,
@@ -16,10 +10,10 @@ jest.mock("@workos-inc/authkit-nextjs", () => ({
 
 jest.mock("@/app/api/workos", () => ({
   workos: {
-    baseURL: "https://api.workos.test",
     userManagement: {
       listOrganizationMemberships: mockListOrganizationMemberships,
     },
+    organizations: { getOrganization: mockGetOrganization },
   },
 }));
 
@@ -67,8 +61,6 @@ describe("getBillingActionContext", () => {
 });
 
 describe("read-only billing status for unscoped users", () => {
-  const originalFetch = global.fetch;
-  const mockFetch = jest.fn();
   const membership = { organizationId: "org_single", role: { slug: "admin" } };
   const memberships = (data: unknown[], all = data) => ({
     data,
@@ -79,16 +71,12 @@ describe("read-only billing status for unscoped users", () => {
     jest.resetModules();
     mockWithAuth.mockReset();
     mockListOrganizationMemberships.mockReset();
-    mockFetch.mockReset();
-    global.fetch = mockFetch as typeof fetch;
+    mockGetOrganization.mockReset();
     mockWithAuth.mockResolvedValue({ user: { id: "user_free" } } as never);
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ stripe_customer_id: "cus_single" }),
+    mockGetOrganization.mockResolvedValue({
+      id: "org_single",
+      stripeCustomerId: "cus_single",
     } as never);
-  });
-  afterEach(() => {
-    global.fetch = originalFetch;
   });
 
   it("recognizes a signed-in free user with no memberships without querying Stripe organization details", async () => {
@@ -99,7 +87,7 @@ describe("read-only billing status for unscoped users", () => {
       userId: "user_free",
       statuses: ["active"],
     });
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockGetOrganization).not.toHaveBeenCalled();
   });
 
   it("resolves one existing organization so an unscoped past-due user is not mistaken for a new free user", async () => {
@@ -112,10 +100,7 @@ describe("read-only billing status for unscoped users", () => {
       organizationId: "org_single",
       stripeCustomerId: "cus_single",
     });
-    expect(mockFetch).toHaveBeenCalledWith(
-      "https://api.workos.test/organizations/org_single",
-      expect.any(Object),
-    );
+    expect(mockGetOrganization).toHaveBeenCalledWith("org_single");
   });
 
   it("checks all membership pages before rejecting ambiguous organization selection", async () => {
@@ -129,7 +114,7 @@ describe("read-only billing status for unscoped users", () => {
     await expect(getBillingStatusContext()).rejects.toThrow(
       "No organization found",
     );
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockGetOrganization).not.toHaveBeenCalled();
   });
 
   it("propagates membership lookup failures instead of declaring the user free", async () => {
@@ -150,7 +135,7 @@ describe("read-only billing status for unscoped users", () => {
     await expect(getBillingStatusContext()).rejects.toThrow(
       "Only admins or owners can manage billing",
     );
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockGetOrganization).not.toHaveBeenCalled();
   });
 
   it("never falls back from a selected organization without membership", async () => {
@@ -163,14 +148,14 @@ describe("read-only billing status for unscoped users", () => {
     await expect(getBillingStatusContext()).rejects.toThrow(
       "User is not a member of this organization",
     );
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockGetOrganization).not.toHaveBeenCalled();
   });
 
   it("recognizes an authorized organization without a billing account", async () => {
     mockListOrganizationMemberships.mockResolvedValue(
       memberships([membership]) as never,
     );
-    mockFetch.mockResolvedValue({ ok: true, json: async () => ({}) } as never);
+    mockGetOrganization.mockResolvedValue({ id: "org_single" } as never);
     const { getBillingStatusContext } = await import("../billing-context");
     await expect(getBillingStatusContext()).resolves.toBeNull();
   });

@@ -1,10 +1,18 @@
-# Dokploy template: HackerAI + Ollama + restricted Docker sandbox runtime.
+# Dokploy template: HackerAI fully self-hosted
+# (app + built-in auth, Postgres, Convex, Garage S3, Docker sandbox runtime).
 
 [variables]
 main_domain = "${domain}"
-workos_cookie_password = "${base64:32}"
-convex_service_role_key = "${base64:32}"
+convex_domain = "${domain}"
+s3_domain = "${domain}"
+postgres_password = "${password:32}"
+convex_service_role_key = "${password:48}"
 account_identity_hmac_secret = "${base64:32}"
+# Must be 64 hex characters (openssl rand -hex 32).
+convex_instance_secret = "${hash:64}"
+garage_rpc_secret = "${hash:64}"
+garage_admin_token = "${password:48}"
+s3_secret_seed = "${password:48}"
 
 [config]
 [[config.domains]]
@@ -12,23 +20,39 @@ serviceName = "app"
 port = 3000
 host = "${main_domain}"
 
+[[config.domains]]
+serviceName = "convex"
+port = 3210
+host = "${convex_domain}"
+
+[[config.domains]]
+serviceName = "garage"
+port = 3900
+host = "${s3_domain}"
+
 [config.env]
 NEXT_PUBLIC_BASE_URL = "https://${main_domain}"
-NEXT_PUBLIC_WORKOS_REDIRECT_URI = "https://${main_domain}/callback"
-WORKOS_COOKIE_PASSWORD = "${workos_cookie_password}"
+NEXT_PUBLIC_CONVEX_URL = "https://${convex_domain}"
+AWS_S3_ENDPOINT = "https://${s3_domain}"
+AWS_S3_BUCKET_NAME = "hackerai"
+POSTGRES_PASSWORD = "${postgres_password}"
 CONVEX_SERVICE_ROLE_KEY = "${convex_service_role_key}"
+CONVEX_INSTANCE_SECRET = "${convex_instance_secret}"
 ACCOUNT_IDENTITY_HMAC_SECRET = "${account_identity_hmac_secret}"
-# Fill these in after deploying (see README.md):
-NEXT_PUBLIC_CONVEX_URL = ""
-WORKOS_API_KEY = ""
-WORKOS_CLIENT_ID = ""
-AWS_S3_ACCESS_KEY_ID = ""
-AWS_S3_SECRET_ACCESS_KEY = ""
-AWS_S3_BUCKET_NAME = ""
-AWS_S3_REGION = "us-east-1"
-OLLAMA_MODEL = "qwen3:8b"
+GARAGE_RPC_SECRET = "${garage_rpc_secret}"
+GARAGE_ADMIN_TOKEN = "${garage_admin_token}"
+S3_SECRET_SEED = "${s3_secret_seed}"
+# Close sign-ups after creating your account:
+AUTH_ALLOW_SIGNUPS = "true"
+SELFHOST_ENTITLEMENTS = "ultra-plan"
+# LLM: a remote Ollama (recommended on small hosts) ...
+OLLAMA_BASE_URL = ""
+OLLAMA_API_KEY = ""
+OLLAMA_MODEL = "qwen3:4b"
 OLLAMA_VISION = "false"
+# ... or the bundled one: COMPOSE_PROFILES = "local-llm"
+COMPOSE_PROFILES = ""
 DOCKER_SANDBOX_IMAGE = "hackerai/sandbox:latest"
 SANDBOX_MEMORY_MB = "2048"
-SANDBOX_CPUS = "2"
-SANDBOX_IDLE_TIMEOUT_SECONDS = "1800"
+SANDBOX_CPUS = "1"
+SANDBOX_IDLE_TIMEOUT_SECONDS = "900"

@@ -62,6 +62,25 @@ describe("s3Utils", () => {
       );
     });
 
+    it("uses the custom endpoint with path-style addressing when configured", async () => {
+      process.env.AWS_S3_ENDPOINT = "https://s3.example.com";
+      try {
+        const { S3Client } = await import("@aws-sdk/client-s3");
+        const { getS3Client } = await import("../s3Utils");
+
+        getS3Client();
+
+        expect(S3Client).toHaveBeenCalledWith(
+          expect.objectContaining({
+            endpoint: "https://s3.example.com",
+            forcePathStyle: true,
+          }),
+        );
+      } finally {
+        delete process.env.AWS_S3_ENDPOINT;
+      }
+    });
+
     it("should throw error if credentials are missing", async () => {
       delete process.env.AWS_S3_ACCESS_KEY_ID;
       delete process.env.AWS_S3_SECRET_ACCESS_KEY;

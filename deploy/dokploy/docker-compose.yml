@@ -1,9 +1,16 @@
-# HackerAI on Dokploy: web app + local LLM (Ollama) + sandbox runtime access.
+# HackerAI, fully self-hosted on one host (Dokploy or plain `docker compose`).
 #
-# Sandboxes are Docker containers created on the same host. The app never gets
-# the raw Docker socket: it talks to a restricted socket proxy instead.
+#   app          Next.js web app + built-in auth (lib/selfhost)
+#   postgres     one database server: Convex data + auth accounts
+#   convex       self-hosted Convex backend (application database)
+#   garage       S3-compatible object storage (user files)
+#   setup        one-shot: configures Garage, deploys ./convex to the backend
+#   docker-proxy restricted Docker API for per-user sandbox containers
+#   bootstrap    one-shot: pulls the sandbox image
+#   ollama       optional local LLM (profile `local-llm`)
 #
-# Not included (bring your own): Convex (database), WorkOS (auth), S3 storage.
+# Three public hostnames are needed (see README.md): the app, the Convex API
+# (browsers hold a WebSocket to it) and the S3 endpoint (presigned URLs).
 services:
   app:
     build:
@@ -12,40 +19,155 @@ services:
       args:
         NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
         NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
-        NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${NEXT_PUBLIC_WORKOS_REDIRECT_URI}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
       NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
       CONVEX_SERVICE_ROLE_KEY: ${CONVEX_SERVICE_ROLE_KEY}
-      WORKOS_API_KEY: ${WORKOS_API_KEY}
-      WORKOS_CLIENT_ID: ${WORKOS_CLIENT_ID}
-      WORKOS_COOKIE_PASSWORD: ${WORKOS_COOKIE_PASSWORD}
-      NEXT_PUBLIC_WORKOS_REDIRECT_URI: ${NEXT_PUBLIC_WORKOS_REDIRECT_URI}
       ACCOUNT_IDENTITY_HMAC_SECRET: ${ACCOUNT_IDENTITY_HMAC_SECRET}
-      AWS_S3_ACCESS_KEY_ID: ${AWS_S3_ACCESS_KEY_ID}
-      AWS_S3_SECRET_ACCESS_KEY: ${AWS_S3_SECRET_ACCESS_KEY}
-      AWS_S3_REGION: ${AWS_S3_REGION:-us-east-1}
-      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME}
-      # Local LLM
+      # Built-in auth (replaces WorkOS)
+      AUTH_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/hackerai_auth
+      AUTH_ISSUER: ${NEXT_PUBLIC_BASE_URL}
+      AUTH_ALLOW_SIGNUPS: ${AUTH_ALLOW_SIGNUPS:-true}
+      SELFHOST_ENTITLEMENTS: ${SELFHOST_ENTITLEMENTS:-ultra-plan}
+      # The WorkOS SDK is replaced by lib/selfhost; these only need to be set.
+      WORKOS_API_KEY: selfhost
+      WORKOS_CLIENT_ID: selfhost
+      # LLM: the bundled Ollama (profile `local-llm`) or any remote Ollama.
       LLM_PROVIDER: ollama
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
       OLLAMA_VISION: ${OLLAMA_VISION:-false}
       # Sandbox runtime
       DOCKER_HOST: tcp://docker-proxy:2375
       DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
       SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-2048}
-      SANDBOX_CPUS: ${SANDBOX_CPUS:-2}
-      SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-1800}
+      SANDBOX_CPUS: ${SANDBOX_CPUS:-1}
+      SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-900}
     depends_on:
-      - docker-proxy
-      - ollama
+      postgres:
+        condition: service_healthy
+      docker-proxy:
+        condition: service_started
     networks:
       - default
       - dokploy-network
     expose:
       - "3000"
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    # Sized for a small host; raise shared_buffers if you have RAM to spare.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=192MB
+      - -c
+      - max_connections=80
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    configs:
+      - source: postgres-init
+        target: /docker-entrypoint-initdb.d/10-databases.sql
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  convex:
+    image: ghcr.io/convex/convex-backend:latest
+    restart: unless-stopped
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    # Publish the admin key for the `setup` job, then start as usual.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - ./generate_admin_key.sh > /keys/admin_key && exec ./run_backend.sh
+    environment:
+      INSTANCE_NAME: convex-self-hosted
+      INSTANCE_SECRET: ${CONVEX_INSTANCE_SECRET}
+      CONVEX_CLOUD_ORIGIN: ${NEXT_PUBLIC_CONVEX_URL}
+      # No HTTP actions are defined, so the site origin is never contacted.
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_URL:-http://convex:3211}
+      # The database name is derived from INSTANCE_NAME: convex_self_hosted.
+      POSTGRES_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432
+      DO_NOT_REQUIRE_SSL: "1"
+      DISABLE_BEACON: "1"
+      DISABLE_METRICS_ENDPOINT: "true"
+      REDACT_LOGS_TO_CLIENT: "1"
+      # Defaults are 16 each; lower keeps memory flat on a 2 vCPU host.
+      APPLICATION_MAX_CONCURRENT_NODE_ACTIONS: ${CONVEX_MAX_CONCURRENT_NODE_ACTIONS:-4}
+      APPLICATION_MAX_CONCURRENT_V8_ACTIONS: ${CONVEX_MAX_CONCURRENT_V8_ACTIONS:-8}
+    volumes:
+      - convex-data:/convex/data
+      - convex-keys:/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3210/version"]
+      interval: 5s
+      start_period: 10s
+      retries: 30
+    networks:
+      - default
+      - dokploy-network
+    expose:
+      - "3210"
+
+  garage:
+    image: dxflrs/garage:v1.1.0
+    restart: unless-stopped
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+    configs:
+      - source: garage-config
+        target: /etc/garage.toml
+    volumes:
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    networks:
+      - default
+      - dokploy-network
+    expose:
+      - "3900"
+
+  # One-shot. Re-runs on every deploy so new Convex functions are pushed.
+  setup:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      target: source
+    restart: "no"
+    command: ["node", "deploy/dokploy/setup.mjs"]
+    environment:
+      NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
+      CONVEX_SERVICE_ROLE_KEY: ${CONVEX_SERVICE_ROLE_KEY}
+      AUTH_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/hackerai_auth
+      # Convex fetches the token signing keys over the compose network.
+      AUTH_JWKS_URL: ${AUTH_JWKS_URL:-http://app:3000/.well-known/jwks.json}
+      AWS_S3_ENDPOINT: ${AWS_S3_ENDPOINT}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME:-hackerai}
+      AWS_S3_REGION: us-east-1
+      S3_SECRET_SEED: ${S3_SECRET_SEED}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+      # Placeholders copied into the Convex environment (WorkOS is replaced).
+      WORKOS_API_KEY: selfhost
+      WORKOS_CLIENT_ID: selfhost
+    volumes:
+      - convex-keys:/keys:ro
+    depends_on:
+      convex:
+        condition: service_healthy
+      garage:
+        condition: service_started
 
   # Restricted Docker API: only what the sandbox provisioner needs.
   docker-proxy:
@@ -66,41 +188,69 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    volumes:
-      - ollama-models:/root/.ollama
-    # GPU (optional): uncomment on a host with the NVIDIA container toolkit.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
-
-  # One-shot: download the chat model and the sandbox image before first use.
+  # One-shot: download the sandbox image before first use.
   bootstrap:
     image: docker:cli
     restart: "no"
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
       DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
     depends_on:
       - docker-proxy
+    entrypoint: ["/bin/sh", "-c", 'docker pull "$$DOCKER_SANDBOX_IMAGE"']
+
+  # Optional local LLM: set COMPOSE_PROFILES=local-llm. On a 2 vCPU host
+  # without a GPU this is slow; prefer a small model or a remote Ollama.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-10m}
+      OLLAMA_MAX_LOADED_MODELS: "1"
+      OLLAMA_NUM_PARALLEL: "1"
+    volumes:
+      - ollama-models:/root/.ollama
+
+  ollama-pull:
+    image: ollama/ollama:latest
+    profiles: ["local-llm"]
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
+    depends_on:
       - ollama
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        set -e
-        docker pull "$$DOCKER_SANDBOX_IMAGE"
-        wget -q -O- --post-data="{\"name\":\"$$OLLAMA_MODEL\",\"stream\":false}" \
-          --header="Content-Type: application/json" http://ollama:11434/api/pull
+    entrypoint: ["/bin/sh", "-c", 'ollama pull "$$OLLAMA_MODEL"']
+
+configs:
+  postgres-init:
+    content: |
+      CREATE DATABASE convex_self_hosted;
+      CREATE DATABASE hackerai_auth;
+  garage-config:
+    content: |
+      metadata_dir = "/var/lib/garage/meta"
+      data_dir = "/var/lib/garage/data"
+      db_engine = "sqlite"
+      replication_factor = 1
+      rpc_bind_addr = "[::]:3901"
+      rpc_public_addr = "127.0.0.1:3901"
+
+      [s3_api]
+      s3_region = "us-east-1"
+      api_bind_addr = "[::]:3900"
+      root_domain = ".s3.garage.localhost"
+
+      [admin]
+      api_bind_addr = "[::]:3903"
 
 volumes:
+  postgres-data:
+  convex-data:
+  convex-keys:
+  garage-meta:
+  garage-data:
   ollama-models:
 
 networks:

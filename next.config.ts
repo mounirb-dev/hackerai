@@ -35,6 +35,12 @@ const nextConfig: NextConfig = {
   ...(process.env.NEXT_OUTPUT === "standalone" && {
     output: "standalone" as const,
   }),
+  // Workspace shims that replace the WorkOS SDKs with lib/selfhost (TS source).
+  transpilePackages: [
+    "@workos-inc/authkit-nextjs",
+    "@workos-inc/node",
+    "@workos-inc/widgets",
+  ],
   devIndicators: false,
   env: {
     NEXT_PUBLIC_HACKERAI_BUILD_COMMIT: publicBuildCommit,

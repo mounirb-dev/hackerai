@@ -1,59 +1,50 @@
 import type { AuthConfig } from "convex/server";
 
-const clientId = process.env.WORKOS_CLIENT_ID ?? "";
+/**
+ * Convex trusts access tokens minted by this app's own auth layer
+ * (lib/selfhost). Set `AUTH_ISSUER` in the Convex deployment to the public
+ * origin of the web app, e.g. `https://hackerai.example.com`; the matching
+ * public keys are published at `<origin>/.well-known/jwks.json`.
+ */
+function resolveIssuer(raw: string | undefined): string | undefined {
+  const value = raw?.trim();
+  if (!value) return undefined;
 
-function resolveAuthOrigin(authDomain: string | undefined): string {
-  const configuredDomain = authDomain?.trim();
-  const errorMessage =
-    "WORKOS_AUTH_DOMAIN must be a hostname or HTTPS origin without a path";
-
-  if (!configuredDomain) {
-    throw new Error(errorMessage);
-  }
-
-  let authOrigin: URL;
+  let origin: URL;
   try {
-    authOrigin = new URL(
-      configuredDomain.includes("://")
-        ? configuredDomain
-        : `https://${configuredDomain}`,
-    );
+    origin = new URL(value.includes("://") ? value : `https://${value}`);
   } catch {
-    throw new Error(errorMessage);
+    throw new Error("AUTH_ISSUER must be a hostname or origin without a path");
   }
-
   if (
-    authOrigin.protocol !== "https:" ||
-    authOrigin.username ||
-    authOrigin.password ||
-    authOrigin.port ||
-    !authOrigin.hostname ||
-    !/^\/+$/.test(authOrigin.pathname) ||
-    authOrigin.search ||
-    authOrigin.hash
+    !["https:", "http:"].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    !/^\/*$/.test(origin.pathname) ||
+    origin.search ||
+    origin.hash
   ) {
-    throw new Error(errorMessage);
+    throw new Error("AUTH_ISSUER must be a hostname or origin without a path");
   }
-
-  return authOrigin.origin;
+  return origin.origin;
 }
 
-function createWorkOSProvider(
-  clientId: string,
-  authDomain: string | undefined,
-) {
-  const authOrigin = resolveAuthOrigin(authDomain);
-  return {
-    type: "customJwt" as const,
-    issuer: `${authOrigin}/user_management/${clientId}`,
-    algorithm: "RS256" as const,
-    jwks: `${authOrigin}/sso/jwks/${clientId}`,
-  };
-}
+const issuer = resolveIssuer(process.env.AUTH_ISSUER);
+// Optional: where the Convex backend downloads the keys from, when it should
+// not go through the public origin (e.g. `http://app:3000/.well-known/jwks.json`
+// inside a compose network). The token issuer is still `AUTH_ISSUER`.
+const jwksUrl = process.env.AUTH_JWKS_URL?.trim();
 
 const authConfig = {
-  providers: clientId
-    ? [createWorkOSProvider(clientId, process.env.WORKOS_AUTH_DOMAIN)]
+  providers: issuer
+    ? [
+        {
+          type: "customJwt" as const,
+          issuer,
+          algorithm: "RS256" as const,
+          jwks: jwksUrl || `${issuer}/.well-known/jwks.json`,
+        },
+      ]
     : [],
 } satisfies AuthConfig;
 

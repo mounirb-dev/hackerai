@@ -76,21 +76,10 @@ async function resolveBillingContext(
     throw new Error("Only admins or owners can manage billing");
   }
 
-  const response = await fetch(
-    `${workos.baseURL}/organizations/${organizationId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${process.env.WORKOS_API_KEY}`,
-        "content-type": "application/json",
-      },
-    },
-  );
-  if (!response.ok) {
-    throw new Error("Failed to fetch organization details");
-  }
-  const workosOrg = await response.json();
+  const organization =
+    await workos.organizations.getOrganization(organizationId);
 
-  if (!workosOrg?.stripe_customer_id) {
+  if (!organization?.stripeCustomerId) {
     if (allowUnscopedStatus) return null;
     throw new Error("No billing account found for this organization");
   }
@@ -98,6 +87,6 @@ async function resolveBillingContext(
   return {
     organizationId,
     user,
-    stripeCustomerId: workosOrg.stripe_customer_id,
+    stripeCustomerId: organization.stripeCustomerId,
   };
 }

@@ -1,0 +1,10 @@
+{
+  "name": "@workos-inc/authkit-nextjs",
+  "version": "0.0.0-selfhost",
+  "private": true,
+  "description": "Self-hosted replacement for @workos-inc/authkit-nextjs (see lib/selfhost)",
+  "exports": {
+    ".": "./index.ts",
+    "./components": "./components.tsx"
+  }
+}
