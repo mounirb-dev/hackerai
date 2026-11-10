@@ -352,7 +352,9 @@ services:
       NODE_MAX_OLD_SPACE_SIZE: ${TRIGGER_NODE_MAX_OLD_SPACE_SIZE:-1536}
       # Creates a worker group and writes its token to the shared volume.
       TRIGGER_BOOTSTRAP_ENABLED: "1"
-      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: bootstrap
+      # The app asks Trigger for a run region (us-east-1 by default); on a
+      # self-hosted instance a region is just a worker group's name.
+      TRIGGER_BOOTSTRAP_WORKER_GROUP_NAME: ${TRIGGER_WORKER_GROUP:-us-east-1}
       TRIGGER_BOOTSTRAP_WORKER_TOKEN_PATH: /home/node/shared/worker_token
       CLICKHOUSE_URL: http://default:${TRIGGER_CLICKHOUSE_PASSWORD}@trigger-clickhouse:8123?secure=false
       CLICKHOUSE_LOG_LEVEL: info
