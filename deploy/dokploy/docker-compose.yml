@@ -14,7 +14,7 @@
 services:
   app:
     build:
-      context: ../..
+      context: ${HACKERAI_BUILD_CONTEXT:-../..}
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
@@ -184,7 +184,7 @@ services:
   # One-shot. Re-runs on every deploy so new Convex functions are pushed.
   setup:
     build:
-      context: ../..
+      context: ${HACKERAI_BUILD_CONTEXT:-../..}
       dockerfile: Dockerfile
       target: source
     restart: "no"
