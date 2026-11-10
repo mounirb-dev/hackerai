@@ -63,5 +63,5 @@ env = [
   "SANDBOX_IDLE_TIMEOUT_SECONDS=900",
   "TRIGGER_BOOTSTRAP_EMAIL=${trigger_bootstrap_email}",
   "TRIGGER_BOOTSTRAP_PROJECT_NAME=${trigger_bootstrap_project_name}",
-  "HACKERAI_BUILD_CONTEXT=https://github.com/mounirb-dev/hackerai.git#main",
+  "HACKERAI_BUILD_CONTEXT=https://github.com/mounirb-dev/hackerai.git",
 ]
