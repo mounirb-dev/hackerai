@@ -300,5 +300,3 @@ networks:
   dokploy-network:
     external: true
   trigger-webapp:
-    external: true
-    name: webapp
