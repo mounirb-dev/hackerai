@@ -276,6 +276,7 @@ export const createFileToolSchema = ({
     .join("\n");
   const instructions = [
     "Prioritize using this tool instead of the shell tool for file content operations to avoid escaping errors.",
+    "If a read or edit reports that a path is missing, treat that as a recoverable lookup failure: search the current workspace and plausible attachment/temp roots by basename with `rg --files` (fall back to `find`), verify the candidate, then retry. Do not ask the user for a path until this bounded search is exhausted; never invent or silently recreate a missing file.",
     approvalGated
       ? "File mutations are approval-gated. Call file_edit or file_write and let the platform request approval instead of asking in chat first."
       : null,

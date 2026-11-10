@@ -20,10 +20,15 @@ export function getConvexUrl(): string {
 }
 
 export function getConvexClient(signal?: AbortSignal): ConvexHttpClient {
+  const url = getConvexUrl();
+  const transportUrl =
+    process.env.CONVEX_INTERNAL_URL && !overrideUrl
+      ? process.env.CONVEX_INTERNAL_URL
+      : undefined;
   // A scoped reader must not change the singleton's fetch/cancellation options.
-  if (signal) return createServiceConvexClient(getConvexUrl(), { signal });
+  if (signal) return createServiceConvexClient(url, { signal, transportUrl });
   if (!client) {
-    client = createServiceConvexClient(getConvexUrl());
+    client = createServiceConvexClient(url, { transportUrl });
   }
   return client;
 }

@@ -879,6 +879,27 @@ Commands run directly on the host OS "workstation" without Docker isolation. Be 
     );
   });
 
+  it("instructs Agent to search for missing files before asking the user", async () => {
+    const prompt = await systemPrompt(
+      "user_123",
+      "agent",
+      "pro",
+      "agent-model",
+      null,
+      null,
+      "full_access",
+      false,
+      "e2b",
+    );
+
+    expect(prompt).toContain(
+      "If a requested file or path is missing, do not stop or ask immediately",
+    );
+    expect(prompt).toContain("search the current workspace");
+    expect(prompt).toContain("retry the operation with the verified path");
+    expect(prompt).toContain("Ask the user only after the bounded search");
+  });
+
   it("does not describe a command sandbox in ask mode", async () => {
     const prompt = await systemPrompt(
       "user_123",

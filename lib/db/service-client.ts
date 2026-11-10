@@ -15,6 +15,14 @@ const safeFunctionName = (name: unknown, secrets: string[]) =>
     ? name
     : undefined;
 
+function rewriteTransportUrl(input: RequestInfo | URL, transportUrl: string) {
+  const target = new URL(String(input));
+  const transport = new URL(transportUrl);
+  target.protocol = transport.protocol;
+  target.host = transport.host;
+  return target;
+}
+
 /** Wrap SDK RPCs with scoped service proofs, error redaction and bounded diagnostics. */
 export function createServiceFetch(
   deployment: string,
@@ -301,7 +309,7 @@ export function createServiceFetch(
 
 export function createServiceConvexClient(
   url: string,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; transportUrl?: string },
 ): ConvexHttpClient {
   let clientInstanceId: string | undefined;
   try {
@@ -396,17 +404,24 @@ export function createServiceConvexClient(
     };
   };
   const signal = options?.signal;
+  const transportUrl = options?.transportUrl;
   const transport: typeof fetch = signal
     ? (input, init) => {
         signal.throwIfAborted();
-        return globalThis.fetch(input, {
+        const target = transportUrl
+          ? rewriteTransportUrl(input, transportUrl)
+          : input;
+        return globalThis.fetch(target, {
           ...init,
           signal: init?.signal
             ? AbortSignal.any([init.signal, signal])
             : signal,
         });
       }
-    : globalThis.fetch;
+    : transportUrl
+      ? (input, init) =>
+          globalThis.fetch(rewriteTransportUrl(input, transportUrl), init)
+      : globalThis.fetch;
   const client = new ConvexHttpClient(url, {
     fetch: createServiceFetch(url, transport, clientInstanceId, signal),
   });

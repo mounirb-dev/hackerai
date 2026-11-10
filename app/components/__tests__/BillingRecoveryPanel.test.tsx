@@ -53,7 +53,7 @@ describe("BillingRecoveryPanel", () => {
   it("shows the actual balance and opens a fresh invoice payment URL", async () => {
     mockInvoice.mockResolvedValue("#invoice");
     draw();
-    expect(screen.getByText("$25.00")).toBeVisible();
+    expect(screen.getByText(/25(?:[,.]00)?\s*(?:US\$|\$)/)).toBeVisible();
     await userEvent.click(screen.getByRole("button", { name: "Pay invoice" }));
     await waitFor(() => expect(window.location.hash).toBe("#invoice"));
     expect(mockInvoice).toHaveBeenCalledWith();

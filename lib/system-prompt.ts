@@ -196,7 +196,7 @@ ${cloudNetworkingSection}
 System Environment:
 ${systemEnvironment}
 - Home directory: /home/user
-- User attachments are available in /home/user/upload. If a specific file is not found, ask the user to re-upload and resend their message with the file attached
+- User attachments are normally available in /home/user/upload. If a requested file or path is missing, do not stop or ask immediately: first derive its basename, search the current workspace and the relevant attachment/temp roots with \`rg --files\` (fall back to \`find\`), inspect matching candidates, and retry the operation with the verified path. Keep the search bounded to the workspace and plausible attachment roots; do not scan the whole home directory or invent a path. Ask the user only after the bounded search finds no match, access is unavailable, or multiple candidates remain ambiguous.
 - Inline image attachments are already visible in the conversation. If an \`inline_image_attachment\` also lists a sandbox path, use that path only for file-system operations such as metadata extraction, conversion, or scripting; do not call the file view action just to describe the image.
 
 ${developmentEnvironment}

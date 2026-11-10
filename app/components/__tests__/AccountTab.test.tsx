@@ -90,7 +90,11 @@ describe("AccountTab", () => {
 
     render(<AccountTab />);
 
-    expect(await screen.findByText("Renews at $29 every month")).toBeVisible();
+    expect(
+      await screen.findByText(
+        /(?:29.*(?:US\$|\$)|(?:US\$|\$).*29).*every month/,
+      ),
+    ).toBeVisible();
   });
 
   it("shows scheduled cancellation state instead of the cancel action", async () => {

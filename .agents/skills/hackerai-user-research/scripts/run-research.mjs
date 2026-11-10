@@ -73,7 +73,13 @@ export async function loadResearchKey({
   if (keyFile) {
     try {
       const metadata = await keyFile.stat();
-      if (!metadata.isFile() || (metadata.mode & 0o077) !== 0) {
+      // Windows does not expose POSIX owner/group/other permission bits.
+      // Keep the regular-file check everywhere, and enforce mode 600 where
+      // the platform can represent it.
+      if (
+        !metadata.isFile() ||
+        (process.platform !== "win32" && (metadata.mode & 0o077) !== 0)
+      ) {
         throw new Error(
           "Local PM research key must be an owner-only regular file (mode 600)",
         );

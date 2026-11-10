@@ -1,0 +1,2 @@
+Remove-Item Env:TRIGGER_ACCESS_TOKEN -ErrorAction SilentlyContinue
+pnpm exec trigger dev start --project-ref proj_ausgdlgrfhxvqtvoywtj --api-url http://localhost:8030 --env-file stack/.env --skip-update-check --skip-telemetry

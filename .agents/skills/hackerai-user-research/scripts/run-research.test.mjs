@@ -78,12 +78,14 @@ test("rejects malformed local keys without exposing values or using the environm
 
 test("rejects public, oversized, and non-file local credentials", async (t) => {
   const { homeDir, keyPath } = await localKeyFixture(t, "synthetic-local-key");
-  await chmod(keyPath, 0o644);
-  await assert.rejects(
-    loadResearchKey({ homeDir, env: {} }),
-    /owner-only regular file/,
-  );
-  await chmod(keyPath, 0o600);
+  if (process.platform !== "win32") {
+    await chmod(keyPath, 0o644);
+    await assert.rejects(
+      loadResearchKey({ homeDir, env: {} }),
+      /owner-only regular file/,
+    );
+    await chmod(keyPath, 0o600);
+  }
   await writeFile(keyPath, "x".repeat(4097));
   await assert.rejects(
     loadResearchKey({ homeDir, env: {} }),

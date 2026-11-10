@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, renameSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -10,6 +10,8 @@ import {
   selectSuites,
   suites,
 } from "./run-tooling.mjs";
+
+const unixPathFixtureTest = process.platform === "win32" ? test.skip : test;
 
 const names = (paths) => selectSuites(paths).map((suite) => suite.name);
 test("application changes skip isolated tooling but tooling dependencies and unknown files cannot", () => {
@@ -40,7 +42,7 @@ test("application changes skip isolated tooling but tooling dependencies and unk
   }
 });
 
-test("collects staged, unstaged, deleted, renamed and untracked paths without quoting corruption", (t) => {
+unixPathFixtureTest("collects staged, unstaged, deleted, renamed and untracked paths without quoting corruption", (t) => {
   const dir = mkdtempSync(join(tmpdir(), "test-selection-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   // Hooks export Git selectors. Never let fixture operations inherit the real
@@ -68,7 +70,11 @@ test("collects staged, unstaged, deleted, renamed and untracked paths without qu
   writeFileSync(join(dir, "partial"), "staged");
   git("add", "partial");
   writeFileSync(join(dir, "partial"), "initial");
-  renameSync(join(dir, "renamed"), join(dir, "new name\nwith newline"));
+  // Model the rename as add/delete instead of relying on filesystem rename
+  // behavior for newline-containing Windows paths. Git still reports it as a
+  // rename because the contents are identical.
+  writeFileSync(join(dir, "new name\nwith newline"), "initial");
+  rmSync(join(dir, "renamed"));
   rmSync(join(dir, "deleted"));
   writeFileSync(join(dir, "untracked"), "new");
   assert.deepEqual(

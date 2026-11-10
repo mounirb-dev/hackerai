@@ -42,7 +42,10 @@ type SendTriggerSessionInputOptions = {
   signal?: AbortSignal;
 };
 
-const TRIGGER_API_BASE_URL = "https://api.trigger.dev";
+// Keep realtime same-origin. The Next route proxies this request to the
+// configured Trigger instance, avoiding CORS and localhost/public-network
+// mismatches in self-hosted deployments.
+const TRIGGER_API_BASE_URL = "/api/trigger-realtime";
 const TRIGGER_VERSION = "4.5.0";
 const TRIGGER_API_VERSION = "2025-07-16";
 const FETCH_TIMEOUT_MS = 30_000;

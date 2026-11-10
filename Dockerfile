@@ -27,8 +27,10 @@ COPY . .
 FROM source AS build
 ARG NEXT_PUBLIC_BASE_URL
 ARG NEXT_PUBLIC_CONVEX_URL
+ARG NEXT_PUBLIC_TRIGGER_API_URL
 ENV NEXT_PUBLIC_BASE_URL=$NEXT_PUBLIC_BASE_URL \
     NEXT_PUBLIC_CONVEX_URL=$NEXT_PUBLIC_CONVEX_URL \
+    NEXT_PUBLIC_TRIGGER_API_URL=$NEXT_PUBLIC_TRIGGER_API_URL \
     NEXT_OUTPUT=standalone \
     NEXT_TELEMETRY_DISABLED=1
 # `next build` directly: the repo's `pnpm build` also uploads PostHog sourcemaps.
@@ -44,8 +46,10 @@ RUN useradd --system --uid 1001 nextjs
 COPY --from=build --chown=nextjs /app/.next/standalone ./
 COPY --from=build --chown=nextjs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs /app/public ./public
+COPY --from=build --chown=nextjs /app/deploy/dokploy/start-with-trigger.sh ./start-with-trigger.sh
+RUN chmod 755 ./start-with-trigger.sh
 USER nextjs
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
   CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "server.js"]
+CMD ["./start-with-trigger.sh"]

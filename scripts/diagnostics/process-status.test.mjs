@@ -34,6 +34,7 @@ test("malformed, extra, duplicate and multiline process data fail without echoin
     sentinel.repeat(3000),
   ]) {
     const result = await getProcessStatus([42], {
+      platform: "linux",
       run: async () => ({ stdout, stderr: "" }),
     });
     assert.deepEqual(result, { ok: false, reason: "invalid-output" });
@@ -41,6 +42,7 @@ test("malformed, extra, duplicate and multiline process data fail without echoin
 });
 test("process errors and stderr never escape through exceptions or JSON", async () => {
   const failed = await getProcessStatus([42], {
+    platform: "linux",
     run: async () => {
       throw new Error(sentinel);
     },
@@ -48,6 +50,7 @@ test("process errors and stderr never escape through exceptions or JSON", async 
   assert.deepEqual(failed, { ok: false, reason: "process-inspection-failed" });
   assert.deepEqual(
     await getProcessStatus([42], {
+      platform: "linux",
       run: async () => ({ stdout: "", stderr: sentinel }),
     }),
     { ok: false, reason: "invalid-output" },
@@ -66,6 +69,7 @@ test("invalid selections fail before querying ps; missing processes are explicit
   });
   assert.deepEqual(
     await getProcessStatus([42], {
+      platform: "linux",
       run: async () => ({ stdout: "", stderr: "" }),
     }),
     { ok: true, processes: [], missingPids: [42] },

@@ -19,10 +19,13 @@ services:
       args:
         NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
         NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
+        NEXT_PUBLIC_TRIGGER_API_URL: ${NEXT_PUBLIC_TRIGGER_API_URL:-https://api.trigger.dev}
     restart: unless-stopped
     environment:
       NEXT_PUBLIC_BASE_URL: ${NEXT_PUBLIC_BASE_URL}
       NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
+      NEXT_PUBLIC_TRIGGER_API_URL: ${NEXT_PUBLIC_TRIGGER_API_URL:-https://api.trigger.dev}
+      CONVEX_INTERNAL_URL: ${CONVEX_INTERNAL_URL:-http://convex:3210}
       CONVEX_SERVICE_ROLE_KEY: ${CONVEX_SERVICE_ROLE_KEY}
       ACCOUNT_IDENTITY_HMAC_SECRET: ${ACCOUNT_IDENTITY_HMAC_SECRET}
       # Built-in auth (replaces WorkOS)
@@ -39,6 +42,14 @@ services:
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:4b}
       OLLAMA_VISION: ${OLLAMA_VISION:-false}
+      # Trigger.dev self-hosted (local API + project credentials).
+      # Server-side SDK traffic must use Trigger's internal Docker hostname.
+      # The browser uses the same-origin realtime proxy below.
+      TRIGGER_API_URL: ${TRIGGER_API_URL:-http://webapp:3000}
+      TRIGGER_INTERNAL_URL: ${TRIGGER_INTERNAL_URL:-}
+      TRIGGER_PROJECT_ID: ${TRIGGER_PROJECT_ID:-}
+      TRIGGER_SECRET_KEY: ${TRIGGER_SECRET_KEY:-}
+      TRIGGER_CREDENTIALS_FILE: /run/trigger/credentials.env
       # Sandbox runtime
       DOCKER_HOST: tcp://docker-proxy:2375
       DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
@@ -50,11 +61,40 @@ services:
         condition: service_healthy
       docker-proxy:
         condition: service_started
+      trigger-bootstrap:
+        condition: service_completed_successfully
     networks:
       - default
       - dokploy-network
+      - trigger-webapp
+    volumes:
+      - trigger-credentials:/run/trigger:ro
     expose:
       - "3000"
+
+  # Headless Trigger.dev project bootstrap. It reuses the existing project or
+  # creates one directly in Trigger's Postgres, then persists the dev key in a
+  # named volume. No dashboard login or hand-copied API key is needed.
+  trigger-bootstrap:
+    image: postgres:14-alpine
+    restart: "no"
+    environment:
+      PGHOST: ${TRIGGER_DB_HOST:-postgres}
+      PGPORT: ${TRIGGER_DB_PORT:-5432}
+      PGUSER: ${TRIGGER_DB_USER:-postgres}
+      PGDATABASE: ${TRIGGER_DB_NAME:-main}
+      PGPASSWORD: ${TRIGGER_POSTGRES_PASSWORD:-}
+      TRIGGER_PROJECT_ID: ${TRIGGER_PROJECT_ID:-}
+      TRIGGER_SECRET_KEY: ${TRIGGER_SECRET_KEY:-}
+      TRIGGER_BOOTSTRAP_EMAIL: ${TRIGGER_BOOTSTRAP_EMAIL:-admin@hackerai.local}
+      TRIGGER_BOOTSTRAP_PROJECT_NAME: ${TRIGGER_BOOTSTRAP_PROJECT_NAME:-HackerAI Agent}
+      TRIGGER_CREDENTIALS_FILE: /run/trigger/credentials.env
+    volumes:
+      - trigger-credentials:/run/trigger
+      - ./trigger-bootstrap.sh:/usr/local/bin/trigger-bootstrap.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/trigger-bootstrap.sh"]
+    networks:
+      - trigger-webapp
 
   postgres:
     image: postgres:17-alpine
@@ -65,7 +105,7 @@ services:
       - -c
       - shared_buffers=192MB
       - -c
-      - max_connections=80
+      - max_connections=200
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     configs:
@@ -74,7 +114,9 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      # TCP on purpose: the temporary server used while the data directory is
+      # initialised only listens on the unix socket, and must not count as ready.
+      test: ["CMD-SHELL", "pg_isready -U postgres -h 127.0.0.1"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -252,7 +294,11 @@ volumes:
   garage-meta:
   garage-data:
   ollama-models:
+  trigger-credentials:
 
 networks:
   dokploy-network:
     external: true
+  trigger-webapp:
+    external: true
+    name: webapp

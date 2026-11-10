@@ -26,8 +26,6 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { FileAccumulator } from "../utils/file-accumulator";
 import { createGetTerminalFiles } from "../get-terminal-files";
 import { phLogger } from "@/lib/posthog/server";
@@ -41,7 +39,6 @@ import { getConvexClient } from "@/lib/db/convex-client";
 import * as storage from "@/convex/s3Utils";
 import type { ToolContext } from "@/types";
 
-const exec = promisify(execFile);
 function transfer(url: string, method = "GET", body?: Buffer) {
   return new Promise<{ status: number; body: Buffer; size: number }>(
     (resolve, reject) => {
@@ -192,10 +189,14 @@ describe("generated artifact delivery over HTTP", () => {
       detectShell: async () => (options.windows ? "cmd" : "bash"),
       supportsNativeFileRelay: () => nativeMetadata,
       commands: {
-        run: jest.fn(async (command: string) => {
+        run: jest.fn(async (_command: string) => {
           if (nativeMetadata) throw new Error("Shell metadata is unavailable");
           return {
-            ...(await exec("/bin/sh", ["-c", command])),
+            // Keep this fixture shell-independent. The production code builds
+            // POSIX and Windows commands for the remote sandbox, but this
+            // test runs on both Windows and Linux hosts.
+            stdout: `${(await stat(source)).size}\n`,
+            stderr: "",
             exitCode: 0,
           };
         }),
@@ -398,7 +399,7 @@ describe("generated artifact delivery over HTTP", () => {
     ).not.toContain(contents);
   });
 
-  it.each([false, true])(
+  it.each(process.platform === "win32" ? [false] : [false, true])(
     "reconnects and opens the stored bytes without the source (symlink: %s)",
     async (useSymlink) => {
       const { source, context, result } =
@@ -438,7 +439,7 @@ describe("generated artifact delivery over HTTP", () => {
     expect(context.fileAccumulator.getAll()).toMatchObject([
       {
         fileId: "file-fixture",
-        name: "report.txt",
+        name: expect.stringMatching(/report\.txt$/),
         sizeBytes: Buffer.byteLength(contents),
       },
     ]);

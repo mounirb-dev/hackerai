@@ -24,6 +24,10 @@ import {
   main,
 } from "./qa.mjs";
 
+// The desktop supervisor intentionally supports macOS and Linux only. Windows
+// cannot reproduce its POSIX signal and symlink semantics without a VM.
+const unixOnlyTest = process.platform === "win32" ? test.skip : test;
+
 const config = () => ({
   environment: "local",
   frontend: "http://127.0.0.1:3100",
@@ -138,7 +142,7 @@ test("serve rejects HTTPS before trying to launch its HTTP server", async (t) =>
   );
 });
 
-test("checks executable hash and rejects paths escaping the worktree through symlinks", async (t) => {
+unixOnlyTest("checks executable hash and rejects paths escaping the worktree through symlinks", async (t) => {
   const dir = await temp(t);
   const executable = join(dir, "app");
   const content = "#!/bin/sh\nexit 0\n";
@@ -190,7 +194,7 @@ test("health does not follow redirects, send cookies or read response content", 
   assert.equal(requests, 1);
 });
 
-test(
+unixOnlyTest(
   "stop terminates the owned process while preserving unrelated work and discarding raw output",
   { timeout: 15000 },
   async (t) => {
@@ -230,7 +234,7 @@ test(
   },
 );
 
-test(
+unixOnlyTest(
   "escalates a child that ignores termination and records a failed spawn",
   { timeout: 15000 },
   async (t) => {
@@ -307,7 +311,7 @@ test(
 );
 
 for (const duringSpawn of [false, true])
-  test(
+  unixOnlyTest(
     `terminal hangup ${duringSpawn ? "during startup" : "while running"} shuts down the owned child`,
     { timeout: 15000 },
     async (t) => {
@@ -367,7 +371,7 @@ await supervise({command:process.execPath,args:['-e','setInterval(() => {}, 1000
     },
   );
 
-test("a synchronous spawn failure restores the callers signal listeners", async (t) => {
+unixOnlyTest("a synchronous spawn failure restores the callers signal listeners", async (t) => {
   const dir = await temp(t);
   const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
   const before = signals.map((name) => process.listenerCount(name));
