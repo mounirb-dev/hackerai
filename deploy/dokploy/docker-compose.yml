@@ -298,6 +298,11 @@ services:
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-10m}
       OLLAMA_MAX_LOADED_MODELS: "1"
       OLLAMA_NUM_PARALLEL: "1"
+      # Ollama's own VRAM-based default (often 4096) is too small for
+      # HackerAI's system prompt plus real conversation history, and the app
+      # cannot override an already-loaded model's window per request (see
+      # lib/ai/ollama.ts). Set explicitly so chats don't silently lose context.
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-32768}
     volumes:
       - ollama-models:/root/.ollama
 

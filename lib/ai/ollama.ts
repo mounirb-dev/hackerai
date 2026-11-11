@@ -6,6 +6,16 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
  * Set `LLM_PROVIDER=ollama` to route every model key to a local model. This is
  * meant for single-operator deployments: the hosted model catalog, pricing and
  * provider-specific request repairs are bypassed.
+ *
+ * Context window: Ollama sizes each model's context at load time from
+ * `OLLAMA_CONTEXT_LENGTH` on the Ollama server itself (default: a VRAM-based
+ * guess, often 4096 - too small for HackerAI's system prompt plus any real
+ * conversation history, which silently drops older turns once the window
+ * fills). There is no per-request field this client can set to override an
+ * already-loaded model's window; the operator must set
+ * `OLLAMA_CONTEXT_LENGTH` (e.g. 32768) in the environment that runs
+ * `ollama serve`, before the model is first loaded, and restart Ollama after
+ * changing it.
  */
 
 export const OLLAMA_DEFAULT_BASE_URL = "http://ollama:11434";
