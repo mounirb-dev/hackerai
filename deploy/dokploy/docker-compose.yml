@@ -302,7 +302,7 @@ services:
       # HackerAI's system prompt plus real conversation history, and the app
       # cannot override an already-loaded model's window per request (see
       # lib/ai/ollama.ts). Set explicitly so chats don't silently lose context.
-      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-32768}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-65536}
     volumes:
       - ollama-models:/root/.ollama
 
