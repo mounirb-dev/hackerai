@@ -285,8 +285,8 @@ services:
         set -eu
         apk add --no-cache git >/dev/null
         rm -rf /tmp/sandbox-src
-        git clone --depth 1 --branch "$SANDBOX_GIT_REF" "$SANDBOX_GIT_URL" /tmp/sandbox-src
-        docker build -t "$DOCKER_SANDBOX_IMAGE" -f /tmp/sandbox-src/docker/Dockerfile /tmp/sandbox-src/docker
+        git clone --depth 1 --branch "$$SANDBOX_GIT_REF" "$$SANDBOX_GIT_URL" /tmp/sandbox-src
+        docker build -t "$$DOCKER_SANDBOX_IMAGE" -f /tmp/sandbox-src/docker/Dockerfile /tmp/sandbox-src/docker
 
   # Optional local LLM: set COMPOSE_PROFILES=local-llm. On a 2 vCPU host
   # without a GPU this is slow; prefer a small model or a remote Ollama.
