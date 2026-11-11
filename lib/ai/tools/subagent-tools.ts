@@ -366,12 +366,21 @@ export const createDelegateTaskTool = (
               region: config.triggerRegion,
             },
           );
-        } catch {
+        } catch (error) {
           captureCreateFailure(
             "child_trigger",
             "child_trigger_failed",
             subagentId,
           );
+          triggerLogger.error("[subagent] child trigger failed", {
+            event: "subagent_child_trigger_failed",
+            service: "hackerai-subagent",
+            subagentId,
+            parentTriggerRunId,
+            profile,
+            error_message:
+              error instanceof Error ? error.message : String(error),
+          });
           const failed = await failUnattachedSubagent({
             subagentId,
             parentTriggerRunId,
