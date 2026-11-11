@@ -6,7 +6,8 @@
 #   garage       S3-compatible object storage (user files)
 #   setup        one-shot: configures Garage, deploys ./convex to the backend
 #   docker-proxy restricted Docker API for per-user sandbox containers
-#   bootstrap    one-shot: pulls the sandbox image
+#   sandbox-image one-shot: builds the sandbox image natively for this host's
+#                architecture (Docker Hub's hackerai/sandbox is amd64-only)
 #   ollama       optional local LLM (profile `local-llm`)
 #
 # Three public hostnames are needed (see README.md): the app, the Convex API
@@ -234,6 +235,9 @@ services:
       EXEC: 1
       IMAGES: 1
       VOLUMES: 1
+      # Only for the legacy (non-BuildKit) /build endpoint the sandbox-image
+      # service uses to build natively for this host's architecture.
+      BUILD: 1
       # Everything else (swarm, secrets, services, networks, ...) stays denied.
       # NOTE: the proxy filters by method+path only, not request bodies. A
       # compromised app could still POST /containers/create with Privileged or
@@ -241,17 +245,48 @@ services:
       # HostConfig is built server-side from env; never expose the proxy port.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # Reachable from the app (default network) and from the agent-long
+    # sandbox calls that run inside Trigger task containers (trigger network).
+    networks:
+      - default
+      - trigger
 
   # One-shot: download the sandbox image before first use.
-  bootstrap:
+  # Builds the sandbox image on the host instead of pulling it: Docker Hub's
+  # `hackerai/sandbox` is published amd64-only, so pulling it on an arm64 host
+  # (e.g. Oracle Ampere A1) fails. Docker's pull endpoint reports that failure
+  # as a 200 with the error inside the streamed body, which used to make the
+  # app retry forever instead of surfacing it (see provisioner.ts pullImage).
+  # Building locally sidesteps the mismatch entirely and needs no registry.
+  sandbox-image:
     image: docker:cli
     restart: "no"
     environment:
       DOCKER_HOST: tcp://docker-proxy:2375
+      # docker-socket-proxy doesn't reliably proxy BuildKit's session protocol;
+      # force the legacy builder, which speaks the plain REST /build endpoint.
+      DOCKER_BUILDKIT: "0"
       DOCKER_SANDBOX_IMAGE: ${DOCKER_SANDBOX_IMAGE:-hackerai/sandbox:latest}
+      SANDBOX_GIT_URL: ${HACKERAI_SANDBOX_GIT_URL:-https://github.com/mounirb-dev/hackerai.git}
+      SANDBOX_GIT_REF: ${HACKERAI_SANDBOX_GIT_REF:-main}
     depends_on:
-      - docker-proxy
-    entrypoint: ["/bin/sh", "-c", 'docker pull "$$DOCKER_SANDBOX_IMAGE"']
+      docker-proxy:
+        condition: service_started
+    # Clones docker/'s own source (mirrors .github/workflows/docker-sandbox.yml
+    # and docker/build.sh: context "./docker", file "./docker/Dockerfile") and
+    # builds it with `docker build`, which always targets the daemon's own
+    # architecture. A compose `build:` step can't do this: Dokploy's raw
+    # compose deploy builds every service from its single repo checkout and
+    # ignores a service-specific build context.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        set -eu
+        apk add --no-cache git >/dev/null
+        rm -rf /tmp/sandbox-src
+        git clone --depth 1 --branch "$SANDBOX_GIT_REF" "$SANDBOX_GIT_URL" /tmp/sandbox-src
+        docker build -t "$DOCKER_SANDBOX_IMAGE" -f /tmp/sandbox-src/docker/Dockerfile /tmp/sandbox-src/docker
 
   # Optional local LLM: set COMPOSE_PROFILES=local-llm. On a 2 vCPU host
   # without a GPU this is slow; prefer a small model or a remote Ollama.
