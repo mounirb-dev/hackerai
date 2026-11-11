@@ -124,8 +124,14 @@ class FakeEngine {
   }
 
   request = jest.fn(async (method: string, path: string, opts?: any) => {
-    this.dispatch(method, path, opts);
-    return { status: 200, headers: {}, body: Buffer.alloc(0) };
+    const result = this.dispatch(method, path, opts);
+    // Docker's pull endpoint streams JSON lines as the response body; a route
+    // that wants to emulate that returns a Buffer instead of the usual object.
+    return {
+      status: 200,
+      headers: {},
+      body: Buffer.isBuffer(result) ? result : Buffer.alloc(0),
+    };
   });
 
   json = jest.fn(async (method: string, path: string, opts?: any) =>
@@ -670,6 +676,41 @@ describe("ensureUserSandbox", () => {
       fromImage: "reg.example/team/img",
       tag: "v2",
     });
+  });
+
+  it("surfaces a pull failure streamed inside a 200 response instead of retrying forever", async () => {
+    // Docker's /images/create always answers 200 and reports failure only as
+    // a JSON line in the streamed body (e.g. no manifest for this host's
+    // architecture) - a bare status check would treat this as a success.
+    const engine = new FakeEngine();
+    engine.routes.set(`GET /containers/${NAME}/json`, () => {
+      throw notFound();
+    });
+    engine.routes.set("POST /containers/create", () => {
+      throw new DockerEngineError(404, "No such image");
+    });
+    engine.routes.set("POST /images/create", () =>
+      Buffer.from(
+        [
+          JSON.stringify({ status: "Pulling from hackerai/sandbox" }),
+          JSON.stringify({
+            error:
+              "no matching manifest for linux/arm64 in the manifest list entries",
+          }),
+        ].join("\n"),
+      ),
+    );
+
+    await expect(
+      ensureUserSandbox("u1", { engine: engine.asEngine(), config: CONFIG }),
+    ).rejects.toMatchObject({
+      name: "SandboxError",
+      message: expect.stringContaining("no matching manifest for linux/arm64"),
+    });
+    // Never retries create() after a failed pull.
+    expect(
+      engine.calls.filter((c) => c.key === "POST /containers/create").length,
+    ).toBe(1);
   });
 
   it("starts an existing stopped container and reports created=false", async () => {

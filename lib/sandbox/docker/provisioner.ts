@@ -100,12 +100,37 @@ function initCommand(idleSeconds: number): string[] {
 async function pullImage(engine: DockerEngine, image: string): Promise<void> {
   const separator = image.lastIndexOf(":");
   const hasTag = separator > image.lastIndexOf("/");
-  await engine.request("POST", "/images/create", {
+  const { body } = await engine.request("POST", "/images/create", {
     query: {
       fromImage: hasTag ? image.slice(0, separator) : image,
       tag: hasTag ? image.slice(separator + 1) : "latest",
     },
   });
+  // The pull endpoint always answers 200 and streams progress as JSON lines;
+  // a failure (e.g. no manifest for this host's architecture) shows up only
+  // inside that stream, never in the HTTP status. Surface it explicitly, or
+  // every caller silently retries forever against an image that never lands.
+  for (const line of body.toString("utf8").split("\n")) {
+    if (!line.trim()) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const message =
+      parsed &&
+      typeof parsed === "object" &&
+      "error" in parsed &&
+      typeof (parsed as { error: unknown }).error === "string"
+        ? (parsed as { error: string }).error
+        : undefined;
+    if (message) {
+      throw new SandboxError(
+        `Failed to pull sandbox image "${image}": ${message}`,
+      );
+    }
+  }
 }
 
 async function createContainer(
