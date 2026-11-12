@@ -1,10 +1,19 @@
 // A manager belongs to one request/run. Each acquisition already has provider
 // retries; subsequent tool calls must not restart that budget indefinitely.
 const MAX_FAILED_ACQUISITIONS = 2;
-export const CLOUD_ACQUISITION_DEADLINE_MS = 30_000;
+// A self-hosted Docker sandbox (DOCKER_HOST set) may have to pull or build its
+// image on first use, which takes minutes on a small host. The hosted provider
+// keeps the 30 second budget.
+export const CLOUD_ACQUISITION_DEADLINE_MS = process.env.DOCKER_HOST?.trim()
+  ? 300_000
+  : 30_000;
 // Only a provider-confirmed paused workspace may use this total deadline.
-// Discovery, fresh creation and running-workspace reconnects retain 30 seconds.
-export const CLOUD_RESUME_DEADLINE_MS = 90_000;
+// Discovery, fresh creation and running-workspace reconnects retain the base
+// deadline above.
+export const CLOUD_RESUME_DEADLINE_MS = Math.max(
+  90_000,
+  CLOUD_ACQUISITION_DEADLINE_MS,
+);
 
 const ACQUISITION_STAGES = [
   "unknown",

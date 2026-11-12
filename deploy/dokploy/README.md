@@ -91,6 +91,20 @@ tool calling. Two options:
 Back up the volumes `postgres-data` (accounts and all app data),
 `garage-meta` + `garage-data` (files) and `convex-data`.
 
+## Keep it stable
+
+- **Turn off Dokploy's daily Docker cleanup** (Settings > Server > Docker
+  Cleanup). It prunes stopped containers and unused images, which deletes the
+  per-user sandbox containers (idle sandboxes stop by design) and the
+  `hackerai/sandbox` image. The next Agent run then has to pull or rebuild the
+  image and can time out. Sandbox files survive in the `hackerai-home-*` volumes.
+- **Redeploy the Trigger tasks after every change under `trigger/` or `lib/`.**
+  Dokploy's auto-deploy only rebuilds `app`; the worker keeps running the image
+  from the last `trigger deploy`, so Agent and subagent runs use old code.
+  Symptoms of a stale worker are subagents that never leave "queued".
+- With `DOCKER_HOST` set, sandbox acquisition may take up to 5 minutes (first
+  image pull) instead of 30 seconds.
+
 ## Limitations
 
 - **Trigger.dev is bundled (`trigger-*` services), but the tasks must be
